@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Memory FX</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #050512;
+            --card-bg: rgba(15, 23, 42, 0.75);
+            --border-color: rgba(0, 242, 254, 0.3);
+            --color-primary: #00f2fe;
+            --color-secondary: #7928ca;
+            --color-gold: #ffbd03;
+            --text-main: #f8fafc;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, rgba(0, 242, 254, 0.05) 0%, transparent 70%);
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+            width: 100%;
+            max-width: 420px;
+        }
+
+        /* Scoreboard & Info */
+        .scoreboard {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 0.8rem 1.2rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+
+        .score-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .score-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .score-val {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .combo-badge {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.6);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .combo-badge.active {
+            opacity: 1;
+        }
+
+        /* Progress Bar Waktu */
+        .timer-bar-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .timer-bar {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-gold));
+            transition: width 0.1s linear;
+        }
+
+        /* Container Arena Card Grid */
+        .arena-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1/1;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 40px rgba(0, 242, 254, 0.15);
+            background: #000;
+            padding: 12px;
+        }
+
+        .grid-container {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        /* Card Elements & 3D Flip Animation */
+        .card {
+            position: relative;
+            perspective: 1000px;
+            cursor: pointer;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+            border-radius: 14px;
+        }
+
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card.matched .card-inner {
+            transform: rotateY(180deg) scale(0.92);
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card-back {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(3, 5, 18, 0.9));
+            color: var(--color-primary);
+            box-shadow: inset 0 0 15px rgba(0, 242, 254, 0.15);
+        }
+
+        .card-back::after {
+            content: '?';
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            font-size: 1.2rem;
+            opacity: 0.4;
+        }
+
+        .card-front {
+            background: linear-gradient(135deg, rgba(121, 40, 202, 0.8), rgba(0, 242, 254, 0.8));
+            transform: rotateY(180deg);
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+        }
+
+        /* Overlay End Game */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 18, 0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.2rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .overlay h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0, 242, 254, 0.5);
+        }
+
+        .btn-play {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            color: #fff;
+            font-weight: 800;
+            font-size: 0.95rem;
+            padding: 0.8rem 2.2rem;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(0, 242, 254, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 35px rgba(0, 242, 254, 0.8);
+        }
+
+        .instructions {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-wrapper">
+        <!-- Dashboard Header -->
+        <div class="scoreboard">
+            <div class="score-box">
+                <span class="score-label">Skor</span>
+                <span class="score-val" id="score">0</span>
+            </div>
+
+            <div class="combo-badge" id="comboBadge">COMBO x2</div>
+
+            <div class="score-box" style="text-align: right;">
+                <span class="score-label">Rekor</span>
+                <span class="score-val" id="highScore" style="color: var(--color-gold)">0</span>
+            </div>
+        </div>
+
+        <!-- Timer Progress -->
+        <div class="timer-bar-container">
+            <div class="timer-bar" id="timerBar"></div>
+        </div>
+
+        <!-- Canvas / Grid Arena -->
+        <div class="arena-container">
+            <div class="grid-container" id="gridContainer"></div>
+
+            <div class="overlay" id="overlay">
+                <h1 id="overlayTitle">RETRO MEMORY</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem;" id="finalScoreText">Skor Akhir: 0</p>
+                <button class="btn-play" onclick="startGame()">MAIN SEKARANG 🎴</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            Klik / Sentuh Kartu untuk Mencocokkan Pasangan Simbol Neon!
+        </div>
+    </div>
+
+    <script>
+        const gridContainer = document.getElementById('gridContainer');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const comboBadge = document.getElementById('comboBadge');
+        const timerBar = document.getElementById('timerBar');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const finalScoreText = document.getElementById('finalScoreText');
+
+        const ICONS = ['👾', '🚀', '💎', '⚡', '🛡️', '🛸', '🔮', '⚔️'];
+        
+        let isRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('retromemory_highscore') || 0;
+        let combo = 1;
+        let timeLeft = 100; // Persentase %
+        let maxTimeSeconds = 40;
+        let timerInterval;
+
+        let cardsData = [];
+        let flippedCards = [];
+        let matchedPairs = 0;
+        let isProcessing = false;
+
+        highScoreEl.innerText = highScore;
+
+        // Web Audio Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.08) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        function createBoard() {
+            gridContainer.innerHTML = '';
+            // Gandakan ikon untuk membuat pasangan (16 kartu total)
+            const deck = [...ICONS, ...ICONS];
+            // Acak urutan kartu (Fisher-Yates Shuffle)
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+
+            cardsData = [];
+            deck.forEach((icon, index) => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.dataset.index = index;
+                card.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-back"></div>
+                        <div class="card-front">${icon}</div>
+                    </div>
+                `;
+                card.addEventListener('click', () => handleCardClick(index, icon, card));
+                gridContainer.appendChild(card);
+                cardsData.push({ icon, card, isFlipped: false, isMatched: false });
+            });
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 1;
+            matchedPairs = 0;
+            timeLeft = 100;
+            isProcessing = false;
+
+            scoreEl.innerText = score;
+            comboBadge.classList.remove('active');
+            overlay.classList.remove('active');
+
+            createBoard();
+            startTimer();
+
+            isRunning = true;
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            const updateInterval = 100; // Tiap 100ms
+            const decrement = (100 / (maxTimeSeconds * 10));
+
+            timerInterval = setInterval(() => {
+                if (!isRunning) return;
+                timeLeft -= decrement;
+                timerBar.style.width = `${Math.max(0, timeLeft)}%`;
+
+                if (timeLeft <= 0) {
+                    gameOver(false);
+                }
+            }, updateInterval);
+        }
+
+        function handleCardClick(index, icon, cardElement) {
+            if (!isRunning || isProcessing) return;
+            const cardObj = cardsData[index];
+
+            // Abaikan jika kartu sudah terbuka atau matched
+            if (cardObj.isFlipped || cardObj.isMatched) return;
+
+            // Open card
+            cardObj.isFlipped = true;
+            cardElement.classList.add('flipped');
+            flippedCards.push({ index, icon, cardElement });
+            playSound(400, 'sine', 0.05);
+
+            if (flippedCards.length === 2) {
+                isProcessing = true;
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            const [c1, c2] = flippedCards;
+
+            if (c1.icon === c2.icon) {
+                // MATCH!
+                cardsData[c1.index].isMatched = true;
+                cardsData[c2.index].isMatched = true;
+
+                c1.cardElement.classList.add('matched');
+                c2.cardElement.classList.add('matched');
+
+                // Tambah Skor & Combo
+                score += 100 * combo;
+                scoreEl.innerText = score;
+
+                if (combo > 1) {
+                    comboBadge.innerText = `COMBO x${combo}`;
+                    comboBadge.classList.add('active');
+                }
+                combo++;
+
+                // Bonus Waktu (+5%)
+                timeLeft = Math.min(100, timeLeft + 5);
+
+                playSound(700, 'triangle', 0.12);
+                matchedPairs++;
+                flippedCards = [];
+                isProcessing = false;
+
+                // Jika seluruh kartu selesai dicocokkan -> Lanjut Stage Baru!
+                if (matchedPairs === ICONS.length) {
+                    playSound(900, 'sine', 0.3);
+                    setTimeout(() => {
+                        matchedPairs = 0;
+                        createBoard();
+                    }, 600);
+                }
+            } else {
+                // MISMATCH!
+                combo = 1;
+                comboBadge.classList.remove('active');
+                playSound(200, 'sawtooth', 0.1);
+
+                setTimeout(() => {
+                    cardsData[c1.index].isFlipped = false;
+                    cardsData[c2.index].isFlipped = false;
+                    c1.cardElement.classList.remove('flipped');
+                    c2.cardElement.classList.remove('flipped');
+
+                    flippedCards = [];
+                    isProcessing = false;
+                }, 800);
+            }
+        }
+
+        function gameOver(isWin) {
+            isRunning = false;
+            clearInterval(timerInterval);
+            playSound(150, 'sawtooth', 0.4);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('retromemory_highscore', highScore);
+                highScoreEl.innerText = highScore;
+            }
+
+            overlayTitle.innerText = "TIME OUT!";
+            finalScoreText.innerText = `Skor Akhir: ${score}`;
+            overlay.classList.add('active');
+        }
+
+        // Initial Launch
+        startGame();
+    </script>
+</body>
+</html>

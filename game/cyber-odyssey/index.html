@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cyber Odyssey: Neon Horizon</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            touch-action: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #020208;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            updateTouchLayout();
+        }
+
+        // Game State & World
+        let score = 0;
+        let gameOver = false;
+        let gameStarted = false;
+        let touchEnabled = true;
+
+        const WORLD = { width: 3200, height: 1200, gravity: 0.55 };
+        const camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
+
+        // Input Handling
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if ((e.code === 'KeyW' || e.code === 'Space' || e.code === 'ArrowUp') && player) player.jump();
+            if ((e.code === 'KeyJ' || e.code === 'KeyZ') && player) player.attack();
+            if ((e.code === 'KeyK' || e.code === 'ShiftLeft') && player) player.dash();
+        });
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // UI Touch Controls
+        let joystick = { baseX: 0, baseY: 0, currX: 0, currY: 0, active: false, id: null };
+        let jumpBtn = { x: 0, y: 0, radius: 36, id: null };
+        let atkBtn = { x: 0, y: 0, radius: 42, id: null };
+        let dashBtn = { x: 0, y: 0, radius: 32, id: null };
+        let toggleBtn = { x: 0, y: 0, w: 140, h: 40 };
+
+        function updateTouchLayout() {
+            joystick.baseX = 90;
+            joystick.baseY = canvas.height - 90;
+            joystick.currX = joystick.baseX;
+            joystick.currY = joystick.baseY;
+
+            atkBtn.x = canvas.width - 80;
+            atkBtn.y = canvas.height - 80;
+
+            jumpBtn.x = canvas.width - 150;
+            jumpBtn.y = canvas.height - 110;
+
+            dashBtn.x = canvas.width - 160;
+            dashBtn.y = canvas.height - 45;
+
+            toggleBtn.x = canvas.width - 160;
+            toggleBtn.y = 20;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Sound Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playFx(freq, type = 'sine', duration = 0.1) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        // Touch Listeners
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+
+            if (cx >= toggleBtn.x && cx <= toggleBtn.x + toggleBtn.w &&
+                cy >= toggleBtn.y && cy <= toggleBtn.y + toggleBtn.h) {
+                touchEnabled = !touchEnabled;
+                return;
+            }
+
+            if (!gameStarted || gameOver) {
+                resetGame();
+                gameStarted = true;
+            }
+        });
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            for (let t of e.changedTouches) {
+                const tx = t.clientX;
+                const ty = t.clientY;
+
+                if (tx >= toggleBtn.x && tx <= toggleBtn.x + toggleBtn.w &&
+                    ty >= toggleBtn.y && ty <= toggleBtn.y + toggleBtn.h) {
+                    touchEnabled = !touchEnabled;
+                    continue;
+                }
+
+                if (!gameStarted || gameOver) {
+                    resetGame();
+                    gameStarted = true;
+                    continue;
+                }
+
+                if (!touchEnabled) continue;
+
+                if (Math.hypot(tx - atkBtn.x, ty - atkBtn.y) < atkBtn.radius + 15) { player.attack(); continue; }
+                if (Math.hypot(tx - jumpBtn.x, ty - jumpBtn.y) < jumpBtn.radius + 15) { player.jump(); continue; }
+                if (Math.hypot(tx - dashBtn.x, ty - dashBtn.y) < dashBtn.radius + 15) { player.dash(); continue; }
+
+                if (tx < canvas.width / 2 && joystick.id === null) {
+                    joystick.active = true;
+                    joystick.id = t.identifier;
+                    joystick.currX = tx;
+                    joystick.currY = ty;
+                }
+            }
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!touchEnabled || !gameStarted || gameOver) return;
+            for (let t of e.changedTouches) {
+                if (t.identifier === joystick.id) {
+                    const maxDist = 55;
+                    const dx = t.clientX - joystick.baseX;
+                    const dy = t.clientY - joystick.baseY;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > maxDist) {
+                        const angle = Math.atan2(dy, dx);
+                        joystick.currX = joystick.baseX + Math.cos(angle) * maxDist;
+                        joystick.currY = joystick.baseY + Math.sin(angle) * maxDist;
+                    } else {
+                        joystick.currX = t.clientX;
+                        joystick.currY = t.clientY;
+                    }
+                }
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            for (let t of e.changedTouches) {
+                if (t.identifier === joystick.id) {
+                    joystick.active = false;
+                    joystick.id = null;
+                    joystick.currX = joystick.baseX;
+                    joystick.currY = joystick.baseY;
+                }
+            }
+        }
+
+        // Environment: Parallax City Background
+        const buildingsFar = Array.from({ length: 25 }, (_, i) => ({
+            x: i * 150,
+            w: 100 + Math.random() * 80,
+            h: 300 + Math.random() * 400,
+            color: '#090a1a'
+        }));
+        const buildingsNear = Array.from({ length: 20 }, (_, i) => ({
+            x: i * 220,
+            w: 140 + Math.random() * 90,
+            h: 180 + Math.random() * 300,
+            color: '#12142d'
+        }));
+
+        // Platforms Level Layout
+        class Platform {
+            constructor(x, y, w, h) {
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+            }
+            draw() {
+                ctx.save();
+                ctx.fillStyle = '#0c0e24';
+                ctx.fillRect(this.x - camera.x, this.y - camera.y, this.w, this.h);
+
+                // Neon Top Edge Line
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#00f2fe';
+                ctx.fillStyle = '#00f2fe';
+                ctx.fillRect(this.x - camera.x, this.y - camera.y, this.w, 4);
+                ctx.restore();
+            }
+        }
+
+        // Hero Player
+        class Player {
+            constructor() {
+                this.x = 100;
+                this.y = 700;
+                this.w = 30;
+                this.h = 54;
+                this.vx = 0;
+                this.vy = 0;
+                this.speed = 6.5;
+                this.jumpCount = 0;
+                this.maxJumps = 2;
+                this.isGrounded = false;
+                this.facingRight = true;
+                this.hp = 100;
+                this.maxHp = 100;
+
+                // Abilities
+                this.isAttacking = false;
+                this.atkTimer = 0;
+                this.isDashing = false;
+                this.dashTimer = 0;
+                this.dashCooldown = 0;
+
+                this.trail = [];
+            }
+
+            draw() {
+                const drawX = this.x - camera.x;
+                const drawY = this.y - camera.y;
+
+                // Motion Blur / Dash Trail
+                this.trail.forEach((t, i) => {
+                    ctx.save();
+                    ctx.globalAlpha = (i / this.trail.length) * 0.35;
+                    ctx.fillStyle = '#00f2fe';
+                    ctx.fillRect(t.x - camera.x, t.y - camera.y, this.w, this.h);
+                    ctx.restore();
+                });
+
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#00f2fe';
+
+                // Body Chassis
+                ctx.fillStyle = '#00f2fe';
+                ctx.fillRect(drawX, drawY, this.w, this.h);
+
+                // Cyber Visor Line
+                ctx.fillStyle = '#ffffff';
+                let visorX = this.facingRight ? drawX + 16 : drawX + 4;
+                ctx.fillRect(visorX, drawY + 10, 10, 6);
+
+                // Energy Arc Slash Effect
+                if (this.isAttacking) {
+                    ctx.beginPath();
+                    let arcX = this.facingRight ? drawX + this.w + 10 : drawX - 10;
+                    ctx.arc(arcX, drawY + this.h / 2, 45, this.facingRight ? -Math.PI / 3 : Math.PI * 0.7, this.facingRight ? Math.PI / 3 : Math.PI * 1.3);
+                    ctx.strokeStyle = '#ff0055';
+                    ctx.lineWidth = 6;
+                    ctx.shadowColor = '#ff0055';
+                    ctx.shadowBlur = 20;
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            update(platforms) {
+                // Horizontal Movement
+                let moveDir = 0;
+                if (keys['KeyA'] || keys['ArrowLeft']) moveDir -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) moveDir += 1;
+
+                if (touchEnabled && joystick.active) {
+                    moveDir = (joystick.currX - joystick.baseX) / 55;
+                }
+
+                if (moveDir !== 0) {
+                    this.facingRight = moveDir > 0;
+                    this.vx = moveDir * (this.isDashing ? this.speed * 2.2 : this.speed);
+                } else {
+                    this.vx *= 0.75;
+                }
+
+                // Gravity & Vertical Movement
+                if (!this.isDashing) {
+                    this.vy += WORLD.gravity;
+                } else {
+                    this.vy = 0;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Motion Trail Logging
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > 6) this.trail.shift();
+
+                // Platform Collision Resolution
+                this.isGrounded = false;
+                platforms.forEach(p => {
+                    if (this.x < p.x + p.w && this.x + this.w > p.x &&
+                        this.y < p.y + p.h && this.y + this.h > p.y) {
+
+                        // Landing Top
+                        if (this.vy > 0 && this.y + this.h - this.vy <= p.y + 12) {
+                            this.y = p.y - this.h;
+                            this.vy = 0;
+                            this.isGrounded = true;
+                            this.jumpCount = 0;
+                        }
+                    }
+                });
+
+                // Timers
+                if (this.atkTimer > 0) {
+                    this.atkTimer--;
+                    if (this.atkTimer === 0) this.isAttacking = false;
+                }
+
+                if (this.dashTimer > 0) {
+                    this.dashTimer--;
+                    if (this.dashTimer === 0) this.isDashing = false;
+                }
+                if (this.dashCooldown > 0) this.dashCooldown--;
+
+                // Death Condition: Fall Out of Map
+                if (this.y > WORLD.height + 100) {
+                    this.hp = 0;
+                    gameOver = true;
+                }
+            }
+
+            jump() {
+                if (this.jumpCount < this.maxJumps) {
+                    this.vy = -12.5;
+                    this.jumpCount++;
+                    playFx(650, 'sine', 0.08);
+                    spawnExplosion(this.x + this.w / 2, this.y + this.h, '#00f2fe', 6);
+                }
+            }
+
+            attack() {
+                if (this.isAttacking) return;
+                this.isAttacking = true;
+                this.atkTimer = 14;
+                playFx(850, 'sawtooth', 0.1);
+
+                // Hit Detection vs Enemies
+                enemies.forEach((enemy, idx) => {
+                    const hitBoxX = this.facingRight ? this.x + this.w : this.x - 60;
+                    if (hitBoxX < enemy.x + enemy.w && hitBoxX + 60 > enemy.x &&
+                        this.y < enemy.y + enemy.h && this.y + this.h > enemy.y) {
+                        enemy.hp -= 40;
+                        spawnExplosion(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, '#ff0055', 12);
+                        playFx(300, 'square', 0.1);
+                        if (enemy.hp <= 0) {
+                            score += 50;
+                            enemies.splice(idx, 1);
+                        }
+                    }
+                });
+            }
+
+            dash() {
+                if (this.dashCooldown > 0) return;
+                this.isDashing = true;
+                this.dashTimer = 10;
+                this.dashCooldown = 40;
+                playFx(1000, 'sine', 0.1);
+            }
+        }
+
+        // Drone Flying Enemy
+        class EnemyDrone {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.w = 36;
+                this.h = 36;
+                this.hp = 60;
+                this.maxHp = 60;
+                this.startY = y;
+                this.floatTimer = Math.random() * 100;
+            }
+
+            draw() {
+                const drawX = this.x - camera.x;
+                const drawY = this.y - camera.y;
+
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ffbd03';
+
+                // Core Sphere
+                ctx.fillStyle = '#ffbd03';
+                ctx.beginPath();
+                ctx.arc(drawX + 18, drawY + 18, 16, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eye Lens
+                ctx.fillStyle = '#ff0055';
+                ctx.beginPath();
+                ctx.arc(drawX + 18, drawY + 18, 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            update() {
+                this.floatTimer += 0.05;
+                this.y = this.startY + Math.sin(this.floatTimer) * 25;
+
+                // Move slightly towards player
+                if (player) {
+                    const dx = player.x - this.x;
+                    if (Math.abs(dx) < 400) {
+                        this.x += Math.sign(dx) * 1.2;
+                    }
+                }
+            }
+        }
+
+        // Particle System
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = Math.random() * 3.5 + 1;
+                this.vx = (Math.random() - 0.5) * 7;
+                this.vy = (Math.random() - 0.5) * 7;
+                this.alpha = 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x - camera.x, this.y - camera.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.03;
+            }
+        }
+
+        let player;
+        let platforms = [];
+        let enemies = [];
+        let particles = [];
+
+        function spawnExplosion(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function initWorld() {
+            player = new Player();
+            platforms = [
+                new Platform(0, 850, 3200, 150), // Ground Level
+                new Platform(300, 700, 220, 24),
+                new Platform(650, 560, 260, 24),
+                new Platform(1050, 680, 280, 24),
+                new Platform(1450, 520, 300, 24),
+                new Platform(1900, 650, 250, 24),
+                new Platform(2300, 500, 350, 24),
+            ];
+
+            enemies = [
+                new EnemyDrone(450, 620),
+                new EnemyDrone(800, 480),
+                new EnemyDrone(1200, 580),
+                new EnemyDrone(1600, 440),
+                new EnemyDrone(2100, 550),
+                new EnemyDrone(2500, 420),
+            ];
+            particles = [];
+            score = 0;
+            gameOver = false;
+        }
+
+        function resetGame() {
+            initWorld();
+        }
+
+        function drawTouchUI() {
+            // Toggle Touch UI Button
+            ctx.save();
+            ctx.fillStyle = touchEnabled ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255, 0, 85, 0.2)';
+            ctx.strokeStyle = touchEnabled ? '#00f2fe' : '#ff0055';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(toggleBtn.x, toggleBtn.y, toggleBtn.w, toggleBtn.h, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`TOUCH: ${touchEnabled ? 'ON 🟢' : 'OFF 🔴'}`, toggleBtn.x + toggleBtn.w / 2, toggleBtn.y + toggleBtn.h / 2);
+            ctx.restore();
+
+            if (!touchEnabled) return;
+
+            // Render Virtual Joystick
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(joystick.baseX, joystick.baseY, 55, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeStyle = 'rgba(0, 242, 254, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(joystick.currX, joystick.currY, 22, 0, Math.PI * 2);
+            ctx.fillStyle = joystick.active ? 'rgba(0, 242, 254, 0.6)' : 'rgba(0, 242, 254, 0.3)';
+            ctx.fill();
+            ctx.restore();
+
+            // Render Action Buttons
+            const renderBtn = (btn, text, color) => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(btn.x, btn.y, btn.radius, 0, Math.PI * 2);
+                ctx.fillStyle = color + '44';
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, btn.x, btn.y);
+                ctx.restore();
+            };
+
+            renderBtn(atkBtn, '⚔️ ATK', '#ff0055');
+            renderBtn(jumpBtn, '🚀 JUMP', '#00f2fe');
+            renderBtn(dashBtn, '⚡ DASH', '#ffbd03');
+        }
+
+        // Main Loop Game
+        function animate() {
+            requestAnimationFrame(animate);
+
+            ctx.fillStyle = '#020208';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!gameStarted) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#00f2fe';
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#00f2fe';
+                ctx.font = 'bold 42px sans-serif';
+                ctx.fillText('CYBER ODYSSEY', canvas.width / 2, canvas.height / 2 - 40);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.font = '18px sans-serif';
+                ctx.fillText('Tap Layar / Klik di Mana Saja untuk Memulai', canvas.width / 2, canvas.height / 2 + 20);
+                ctx.font = '14px sans-serif';
+                ctx.fillText('Kontrol: A/D/Joystick = Jalan | W/Spasi = Lompat | J = Tebas | K = Dash', canvas.width / 2, canvas.height / 2 + 60);
+                ctx.restore();
+
+                drawTouchUI();
+                return;
+            }
+
+            if (gameOver) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ff0055';
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#ff0055';
+                ctx.font = 'bold 50px sans-serif';
+                ctx.fillText('SYSTEM OVERRIDE - GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.font = '22px sans-serif';
+                ctx.fillText(`Skor Akhir: ${score}`, canvas.width / 2, canvas.height / 2 + 15);
+                ctx.font = '16px sans-serif';
+                ctx.fillText('Tap Layar / Klik untuk Main Lagi', canvas.width / 2, canvas.height / 2 + 65);
+                ctx.restore();
+
+                drawTouchUI();
+                return;
+            }
+
+            // Smooth Camera Interpolation
+            camera.targetX = player.x - canvas.width / 2 + player.w / 2;
+            camera.targetY = player.y - canvas.height / 2 + player.h / 2;
+            camera.x += (camera.targetX - camera.x) * 0.08;
+            camera.y += (camera.targetY - camera.y) * 0.08;
+
+            // Clamp Camera Limits
+            camera.x = Math.max(0, Math.min(WORLD.width - canvas.width, camera.x));
+            camera.y = Math.max(0, Math.min(WORLD.height - canvas.height, camera.y));
+
+            // Render Parallax Background Layers
+            buildingsFar.forEach(b => {
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x - camera.x * 0.3, canvas.height - b.h + (camera.y * 0.2), b.w, b.h);
+            });
+            buildingsNear.forEach(b => {
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x - camera.x * 0.6, canvas.height - b.h + (camera.y * 0.4), b.w, b.h);
+            });
+
+            // Update & Render Game Objects
+            player.update(platforms);
+            player.draw();
+
+            platforms.forEach(p => p.draw());
+
+            enemies.forEach(enemy => {
+                enemy.update();
+                enemy.draw();
+
+                // Player vs Enemy Collision
+                if (player.x < enemy.x + enemy.w && player.x + player.w > enemy.x &&
+                    player.y < enemy.y + enemy.h && player.y + player.h > enemy.y) {
+                    if (!player.isDashing) {
+                        player.hp -= 0.8;
+                        playFx(140, 'sawtooth', 0.05);
+                        if (player.hp <= 0) gameOver = true;
+                    }
+                }
+            });
+
+            particles.forEach((p, idx) => {
+                if (p.alpha <= 0) particles.splice(idx, 1);
+                else { p.update(); p.draw(); }
+            });
+
+            // Futuristic HUD Overlay
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px monospace';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f2fe';
+            ctx.fillText(`SCORE: ${score}`, 30, 45);
+
+            // Player HP Bar UI
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fillRect(30, 60, 200, 14);
+            ctx.fillStyle = player.hp > 30 ? '#00f2fe' : '#ff0055';
+            ctx.fillRect(30, 60, (player.hp / player.maxHp) * 200, 14);
+            ctx.restore();
+
+            drawTouchUI();
+        }
+
+        initWorld();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

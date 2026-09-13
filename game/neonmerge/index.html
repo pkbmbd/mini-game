@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Merge FX</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #03040a;
+            --card-bg: rgba(15, 23, 42, 0.75);
+            --border-color: rgba(121, 40, 202, 0.3);
+            --color-primary: #7928ca;
+            --color-secondary: #00f2fe;
+            --color-gold: #ffbd03;
+            --text-main: #f8fafc;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, rgba(121, 40, 202, 0.08) 0%, transparent 70%);
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+            width: 100%;
+            max-width: 420px;
+        }
+
+        /* Scoreboard & Next Ball Indicator */
+        .scoreboard {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 0.8rem 1.2rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+
+        .score-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .score-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .score-val {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .next-preview {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .next-circle {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+        }
+
+        /* Canvas Container */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 3/4;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 40px rgba(121, 40, 202, 0.2);
+            background: #000;
+            cursor: pointer;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Overlay Game Over */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(3, 4, 10, 0.9);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.2rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .overlay h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(121, 40, 202, 0.5);
+        }
+
+        .btn-play {
+            background: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
+            color: #fff;
+            font-weight: 800;
+            font-size: 0.95rem;
+            padding: 0.8rem 2.2rem;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(121, 40, 202, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 35px rgba(121, 40, 202, 0.8);
+        }
+
+        .instructions {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-wrapper">
+        <!-- Dashboard Header -->
+        <div class="scoreboard">
+            <div class="score-box">
+                <span class="score-label">Skor</span>
+                <span class="score-val" id="score">0</span>
+            </div>
+            
+            <div class="next-preview">
+                <span class="score-label">BERIKUTNYA</span>
+                <div class="next-circle" id="nextCircle"></div>
+            </div>
+
+            <div class="score-box" style="text-align: right;">
+                <span class="score-label">Rekor</span>
+                <span class="score-val" id="highScore" style="color: var(--color-gold)">0</span>
+            </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div class="canvas-container" id="arena">
+            <canvas id="gameCanvas" width="360" height="480"></canvas>
+            
+            <div class="overlay" id="overlay">
+                <h1 id="overlayTitle">NEON MERGE</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem;" id="finalScoreText">Skor Akhir: 0</p>
+                <button class="btn-play" onclick="startGame()">MAIN SEKARANG 🔮</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            Geser Mouse / Sentuh Layar untuk Menggeser & Klik / Lepas untuk Menjatuhkan Bola
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const nextCircle = document.getElementById('nextCircle');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const finalScoreText = document.getElementById('finalScoreText');
+
+        let isRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('neonmerge_highscore') || 0;
+        let gameLoopId;
+
+        highScoreEl.innerText = highScore;
+
+        // Level Definisi Bola (Radius, Warna, Poin)
+        const BALL_TYPES = [
+            { level: 0, radius: 12, color: '#00f2fe', score: 10 },
+            { level: 1, radius: 18, color: '#00ff88', score: 20 },
+            { level: 2, radius: 25, color: '#ffbd03', score: 40 },
+            { level: 3, radius: 32, color: '#ff0055', score: 80 },
+            { level: 4, radius: 40, color: '#7928ca', score: 160 },
+            { level: 5, radius: 48, color: '#ff00d4', score: 320 },
+            { level: 6, radius: 56, color: '#00b8ff', score: 640 },
+            { level: 7, radius: 65, color: '#ff6b00', score: 1280 },
+            { level: 8, radius: 75, color: '#00ffcc', score: 2560 },
+            { level: 9, radius: 88, color: '#ffffff', score: 5120 }
+        ];
+
+        // Web Audio Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.08) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        // State Entities
+        const dangerY = 80;
+        let balls = [];
+        let particles = [];
+        let currentLevel = 0;
+        let nextLevel = 0;
+        let dropX = canvas.width / 2;
+        let canDrop = true;
+        let dangerTimer = 0;
+
+        function getRandomLevel() {
+            // Hanya munculkan 4 tingkatan paling dasar untuk drop awal
+            return Math.floor(Math.random() * 3);
+        }
+
+        function updateNextPreview() {
+            nextCircle.style.backgroundColor = BALL_TYPES[nextLevel].color;
+            nextCircle.style.boxShadow = `0 0 12px ${BALL_TYPES[nextLevel].color}`;
+        }
+
+        function startGame() {
+            balls = [];
+            particles = [];
+            score = 0;
+            dangerTimer = 0;
+            canDrop = true;
+
+            currentLevel = getRandomLevel();
+            nextLevel = getRandomLevel();
+            dropX = canvas.width / 2;
+            
+            scoreEl.innerText = score;
+            updateNextPreview();
+            overlay.classList.remove('active');
+
+            isRunning = true;
+            cancelAnimationFrame(gameLoopId);
+            gameLoop();
+        }
+
+        function createParticles(x, y, color, count = 12) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    size: Math.random() * 4 + 1,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        function dropBall() {
+            if (!canDrop || !isRunning) return;
+
+            const radius = BALL_TYPES[currentLevel].radius;
+            // Batasi dropX agar bola tidak keluar dinding samping
+            const clampedX = Math.max(radius + 5, Math.min(canvas.width - radius - 5, dropX));
+
+            balls.push({
+                x: clampedX,
+                y: dangerY - 10,
+                vx: 0,
+                vy: 2,
+                radius: radius,
+                level: currentLevel,
+                color: BALL_TYPES[currentLevel].color,
+                isDropped: true
+            });
+
+            playSound(300, 'sine', 0.08);
+
+            currentLevel = nextLevel;
+            nextLevel = getRandomLevel();
+            updateNextPreview();
+
+            // Delay sebentar sebelum bola berikutnya bisa dijatuhkan
+            canDrop = false;
+            setTimeout(() => { canDrop = true; }, 400);
+        }
+
+        function updatePhysics() {
+            const gravity = 0.35;
+            const friction = 0.98;
+            const bounce = 0.3;
+
+            // Update pergerakan bola
+            for (let i = 0; i < balls.length; i++) {
+                let b = balls[i];
+                b.vy += gravity;
+                b.x += b.vx;
+                b.y += b.vy;
+
+                b.vx *= friction;
+                b.vy *= friction;
+
+                // Tabrakan Dinding Bawah
+                if (b.y + b.radius > canvas.height) {
+                    b.y = canvas.height - b.radius;
+                    b.vy *= -bounce;
+                }
+
+                // Tabrakan Dinding Kiri & Kanan
+                if (b.x - b.radius < 0) {
+                    b.x = b.radius;
+                    b.vx *= -bounce;
+                } else if (b.x + b.radius > canvas.width) {
+                    b.x = canvas.width - b.radius;
+                    b.vx *= -bounce;
+                }
+            }
+
+            // Tabrakan Antar Bola & Logika Merge
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    let b1 = balls[i];
+                    let b2 = balls[j];
+
+                    let dx = b2.x - b1.x;
+                    let dy = b2.y - b1.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    let minDist = b1.radius + b2.radius;
+
+                    if (dist < minDist) {
+                        // Jika levelnya sama -> MERGE!
+                        if (b1.level === b2.level && b1.level < BALL_TYPES.length - 1) {
+                            let newLevel = b1.level + 1;
+                            let newX = (b1.x + b2.x) / 2;
+                            let newY = (b1.y + b2.y) / 2;
+
+                            // Tambahkan skor
+                            score += BALL_TYPES[newLevel].score;
+                            scoreEl.innerText = score;
+
+                            // Hapus kedua bola tua
+                            balls.splice(j, 1);
+                            balls.splice(i, 1);
+
+                            // Buat bola baru hasil gabungan
+                            balls.push({
+                                x: newX,
+                                y: newY,
+                                vx: (Math.random() - 0.5) * 2,
+                                vy: -2,
+                                radius: BALL_TYPES[newLevel].radius,
+                                level: newLevel,
+                                color: BALL_TYPES[newLevel].color
+                            });
+
+                            createParticles(newX, newY, BALL_TYPES[newLevel].color, 16);
+                            playSound(400 + newLevel * 80, 'triangle', 0.12);
+
+                            return; // Keluar loop untuk mencegah index error
+                        }
+
+                        // Resolusi Fisika Tabrakan Biasa
+                        let overlap = minDist - dist;
+                        let nx = dx / (dist || 1);
+                        let ny = dy / (dist || 1);
+
+                        b1.x -= nx * overlap * 0.5;
+                        b1.y -= ny * overlap * 0.5;
+                        b2.x += nx * overlap * 0.5;
+                        b2.y += ny * overlap * 0.5;
+
+                        let kx = b1.vx - b2.vx;
+                        let ky = b1.vy - b2.vy;
+                        let p = 2 * (nx * kx + ny * ky) / 2;
+
+                        b1.vx -= p * nx * 0.5;
+                        b1.vy -= p * ny * 0.5;
+                        b2.vx += p * nx * 0.5;
+                        b2.vy += p * ny * 0.5;
+                    }
+                }
+            }
+
+            // Check Danger Overflow Line Condition
+            let isOverflowing = false;
+            for (let b of balls) {
+                if (b.y - b.radius < dangerY && Math.abs(b.vy) < 0.5) {
+                    isOverflowing = true;
+                    break;
+                }
+            }
+
+            if (isOverflowing) {
+                dangerTimer++;
+                if (dangerTimer > 180) { // 3 detik berada di atas batas
+                    gameOver();
+                }
+            } else {
+                dangerTimer = Math.max(0, dangerTimer - 1);
+            }
+
+            // Update Particles
+            particles.forEach((p, idx) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.04;
+                if (p.life <= 0) particles.splice(idx, 1);
+            });
+        }
+
+        function draw() {
+            // Background
+            ctx.fillStyle = '#03040a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Garis Batas Bahaya (Danger Line)
+            ctx.strokeStyle = dangerTimer > 0 ? '#ff0055' : 'rgba(255, 0, 85, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.moveTo(0, dangerY);
+            ctx.lineTo(canvas.width, dangerY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Aim Line & Preview Dropping Ball
+            if (canDrop && isRunning) {
+                const curRadius = BALL_TYPES[currentLevel].radius;
+                const clampedX = Math.max(curRadius + 5, Math.min(canvas.width - curRadius - 5, dropX));
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(clampedX, dangerY);
+                ctx.lineTo(clampedX, canvas.height);
+                ctx.stroke();
+
+                // Ball Preview At Top
+                ctx.fillStyle = BALL_TYPES[currentLevel].color;
+                ctx.shadowColor = BALL_TYPES[currentLevel].color;
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(clampedX, dangerY - 15, curRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw Balls
+            balls.forEach(b => {
+                ctx.fillStyle = b.color;
+                ctx.shadowColor = b.color;
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Inner Glow / Highlight Ring
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius * 0.7, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+            ctx.shadowBlur = 0;
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        function gameLoop() {
+            updatePhysics();
+            draw();
+            if (isRunning) gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isRunning = false;
+            playSound(150, 'sawtooth', 0.4);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonmerge_highscore', highScore);
+                highScoreEl.innerText = highScore;
+            }
+
+            overlayTitle.innerText = "OVERFLOW!";
+            finalScoreText.innerText = `Skor Akhir: ${score}`;
+            overlay.classList.add('active');
+        }
+
+        // Mouse & Touch Control Handlers
+        function handleMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            dropX = (clientX - rect.left) * (canvas.width / rect.width);
+        }
+
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            handleMove(e);
+        });
+
+        canvas.addEventListener('click', dropBall);
+        canvas.addEventListener('touchend', e => {
+            e.preventDefault();
+            dropBall();
+        });
+
+        // Initial Launch
+        startGame();
+    </script>
+</body>
+</html>

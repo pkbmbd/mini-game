@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic Tac Toe Modern</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #080c14;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --color-x: #00f2fe;
+            --color-o: #ff007a;
+            --text-main: #f8fafc;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 360px;
+        }
+
+        /* Status & Scoreboard */
+        .header {
+            text-align: center;
+            width: 100%;
+        }
+
+        .title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, var(--color-x), var(--color-o));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            height: 24px;
+            font-weight: 600;
+        }
+
+        .status span {
+            color: var(--text-main);
+            font-weight: 800;
+        }
+
+        /* Game Board */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            width: 100%;
+            aspect-ratio: 1;
+            background: var(--card-bg);
+            padding: 12px;
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .cell {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .cell:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: scale(0.98);
+        }
+
+        .cell.x {
+            color: var(--color-x);
+            text-shadow: 0 0 15px rgba(0, 242, 254, 0.5);
+        }
+
+        .cell.o {
+            color: var(--color-o);
+            text-shadow: 0 0 15px rgba(255, 0, 122, 0.5);
+        }
+
+        /* Winning animation line highlight */
+        .cell.winning {
+            background: rgba(255, 255, 255, 0.1);
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { transform: scale(0.96); opacity: 0.8; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        /* Control Button */
+        .btn-reset {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.8rem 1.8rem;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .btn-reset:hover {
+            background: #fff;
+            color: #000;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1 class="title">TIC TAC TOE</h1>
+            <div class="status" id="status">Giliran: <span id="turnIndicator" style="color: var(--color-x)">X</span></div>
+        </div>
+
+        <div class="board" id="board">
+            <div class="cell" data-index="0"></div>
+            <div class="cell" data-index="1"></div>
+            <div class="cell" data-index="2"></div>
+            <div class="cell" data-index="3"></div>
+            <div class="cell" data-index="4"></div>
+            <div class="cell" data-index="5"></div>
+            <div class="cell" data-index="6"></div>
+            <div class="cell" data-index="7"></div>
+            <div class="cell" data-index="8"></div>
+        </div>
+
+        <button class="btn-reset" onclick="resetGame()">Reset Permainan</button>
+    </div>
+
+    <script>
+        const cells = document.querySelectorAll('.cell');
+        const statusEl = document.getElementById('status');
+        let board = ["", "", "", "", "", "", "", "", ""];
+        let currentPlayer = "X";
+        let isGameActive = true;
+
+        const winningConditions = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Baris
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Kolom
+            [0, 4, 8], [2, 4, 6]             // Diagonal
+        ];
+
+        cells.forEach(cell => {
+            cell.addEventListener('click', handleCellClick);
+        });
+
+        function handleCellClick(e) {
+            const index = e.target.getAttribute('data-index');
+
+            if (board[index] !== "" || !isGameActive) return;
+
+            updateCell(e.target, index);
+            checkResult();
+        }
+
+        function updateCell(cell, index) {
+            board[index] = currentPlayer;
+            cell.innerText = currentPlayer;
+            cell.classList.add(currentPlayer.toLowerCase());
+        }
+
+        function checkResult() {
+            let roundWon = false;
+            let winningCombo = [];
+
+            for (let i = 0; i < winningConditions.length; i++) {
+                const [a, b, c] = winningConditions[i];
+                if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                    roundWon = true;
+                    winningCombo = [a, b, c];
+                    break;
+                }
+            }
+
+            if (roundWon) {
+                statusEl.innerHTML = `Pemenang: <span style="color: ${currentPlayer === 'X' ? 'var(--color-x)' : 'var(--color-o)'}">${currentPlayer}</span> 🎉`;
+                winningCombo.forEach(idx => cells[idx].classList.add('winning'));
+                isGameActive = false;
+                return;
+            }
+
+            if (!board.includes("")) {
+                statusEl.innerHTML = `Permainan Seri! 🤝`;
+                isGameActive = false;
+                return;
+            }
+
+            // Ganti giliran pemain
+            currentPlayer = currentPlayer === "X" ? "O" : "X";
+            const color = currentPlayer === "X" ? "var(--color-x)" : "var(--color-o)";
+            statusEl.innerHTML = `Giliran: <span style="color: ${color}">${currentPlayer}</span>`;
+        }
+
+        function resetGame() {
+            board = ["", "", "", "", "", "", "", "", ""];
+            currentPlayer = "X";
+            isGameActive = true;
+            statusEl.innerHTML = `Giliran: <span style="color: var(--color-x)">X</span>`;
+
+            cells.forEach(cell => {
+                cell.innerText = "";
+                cell.className = "cell";
+            });
+        }
+    </script>
+</body>
+</html>

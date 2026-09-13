@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dungeon Dash FX</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #05050a;
+            --card-bg: rgba(15, 23, 42, 0.7);
+            --border-color: rgba(0, 242, 254, 0.2);
+            --color-player: #00f2fe;
+            --color-spike: #ff0055;
+            --color-gold: #ffbd03;
+            --text-main: #f8fafc;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, rgba(0, 242, 254, 0.05) 0%, transparent 70%);
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+            width: 100%;
+            max-width: 480px;
+        }
+
+        /* Dashboard */
+        .scoreboard {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 0.8rem 1.4rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+
+        .score-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .score-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .score-val {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .status-badge {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: var(--color-player);
+            text-shadow: 0 0 10px rgba(0, 242, 254, 0.6);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .status-badge.active {
+            opacity: 1;
+        }
+
+        /* Canvas Arena */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 40px rgba(0, 242, 254, 0.15);
+            background: #000;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Overlay Game Over */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 10, 0.9);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .overlay h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--color-spike);
+            text-shadow: 0 0 25px rgba(255, 0, 85, 0.6);
+        }
+
+        .btn-play {
+            background: linear-gradient(135deg, var(--color-player), #7928ca);
+            color: #000;
+            font-weight: 800;
+            font-size: 0.95rem;
+            padding: 0.8rem 2.2rem;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(0, 242, 254, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 35px rgba(0, 242, 254, 0.8);
+        }
+
+        /* Mobile Controls */
+        .controls-wrapper {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            margin-top: 0.4rem;
+        }
+
+        .btn-action {
+            flex: 1;
+            height: 65px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            touch-action: manipulation;
+        }
+
+        .btn-jump {
+            background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(121, 40, 202, 0.2));
+            border-color: rgba(0, 242, 254, 0.4);
+        }
+
+        .btn-slide {
+            background: linear-gradient(135deg, rgba(255, 0, 85, 0.2), rgba(255, 189, 3, 0.2));
+            border-color: rgba(255, 0, 85, 0.4);
+        }
+
+        .btn-action:active {
+            opacity: 0.8;
+            transform: scale(0.98);
+        }
+
+        .instructions {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-wrapper">
+        <!-- Dashboard -->
+        <div class="scoreboard">
+            <div class="score-box">
+                <span class="score-label">Jarak (m)</span>
+                <span class="score-val" id="score">0</span>
+            </div>
+            
+            <div class="status-badge" id="statusBadge">SHIELD ACTIVE</div>
+
+            <div class="score-box" style="text-align: right;">
+                <span class="score-label">Rekor</span>
+                <span class="score-val" id="highScore" style="color: var(--color-gold)">0</span>
+            </div>
+        </div>
+
+        <!-- Canvas Game Arena -->
+        <div class="canvas-container" id="arena">
+            <canvas id="gameCanvas" width="480" height="270"></canvas>
+            
+            <div class="overlay" id="overlay">
+                <h1>GAME OVER</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem;" id="finalScoreText">Jarak Akhir: 0m</p>
+                <button class="btn-play" onclick="startGame()">LARI LAGI 🏃</button>
+            </div>
+        </div>
+
+        <!-- Mobile Controls -->
+        <div class="controls-wrapper">
+            <button class="btn-action btn-slide" id="btnSlide">▼ SLIDE</button>
+            <button class="btn-action btn-jump" id="btnJump">▲ JUMP</button>
+        </div>
+
+        <div class="instructions">
+            Laptop: <b>W / Panah Atas / Spasi</b> (Lompat) | <b>S / Panah Bawah</b> (Meluncur)
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const statusBadge = document.getElementById('statusBadge');
+        const overlay = document.getElementById('overlay');
+        const finalScoreText = document.getElementById('finalScoreText');
+
+        const GROUND_Y = 220;
+        let isRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('dungeondash_highscore') || 0;
+        let gameLoopId;
+
+        highScoreEl.innerText = highScore;
+
+        // Audio Synth Generator (Web Audio API)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.1) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        // Game Entities State
+        let player = {};
+        let obstacles = [];
+        let coins = [];
+        let particles = [];
+        let gameSpeed = 5;
+        let spawnTimer = 0;
+        let hasShield = false;
+
+        function startGame() {
+            player = {
+                x: 50,
+                y: GROUND_Y - 30,
+                width: 24,
+                normalHeight: 30,
+                slideHeight: 14,
+                height: 30,
+                vy: 0,
+                gravity: 0.6,
+                jumpPower: -11,
+                isGrounded: true,
+                jumpCount: 0,
+                isSliding: false
+            };
+
+            obstacles = [];
+            coins = [];
+            particles = [];
+            score = 0;
+            gameSpeed = 5;
+            spawnTimer = 0;
+            hasShield = false;
+
+            scoreEl.innerText = score;
+            statusBadge.classList.remove('active');
+            overlay.classList.remove('active');
+            isRunning = true;
+
+            cancelAnimationFrame(gameLoopId);
+            gameLoop();
+        }
+
+        function triggerJump() {
+            if (!isRunning) return;
+            if (player.isGrounded || player.jumpCount < 2) {
+                if (player.isSliding) stopSlide();
+                player.vy = player.jumpPower;
+                player.isGrounded = false;
+                player.jumpCount++;
+                playSound(player.jumpCount === 2 ? 600 : 450, 'sine', 0.1);
+                createDust();
+            }
+        }
+
+        function startSlide() {
+            if (!isRunning || !player.isGrounded) return;
+            if (!player.isSliding) {
+                player.isSliding = true;
+                player.height = player.slideHeight;
+                player.y = GROUND_Y - player.slideHeight;
+                playSound(250, 'triangle', 0.15);
+            }
+        }
+
+        function stopSlide() {
+            if (player.isSliding) {
+                player.isSliding = false;
+                player.height = player.normalHeight;
+                player.y = GROUND_Y - player.normalHeight;
+            }
+        }
+
+        function createDust() {
+            for (let i = 0; i < 6; i++) {
+                particles.push({
+                    x: player.x + player.width / 2,
+                    y: player.y + player.height,
+                    vx: (Math.random() - 0.5) * 3,
+                    vy: (Math.random() - 0.5) * 2,
+                    size: Math.random() * 3 + 1,
+                    color: 'rgba(0, 242, 254, 0.6)',
+                    life: 1
+                });
+            }
+        }
+
+        function spawnObstacle() {
+            const types = ['spike', 'high_laser', 'powerup'];
+            const rand = Math.random();
+            
+            if (rand < 0.5) {
+                // Spikes on ground (jump over)
+                obstacles.push({
+                    x: canvas.width,
+                    y: GROUND_Y - 22,
+                    width: 20,
+                    height: 22,
+                    type: 'spike',
+                    color: '#ff0055'
+                });
+            } else if (rand < 0.85) {
+                // High Laser (slide under)
+                obstacles.push({
+                    x: canvas.width,
+                    y: GROUND_Y - 55,
+                    width: 30,
+                    height: 32,
+                    type: 'high_laser',
+                    color: '#ffbd03'
+                });
+            } else {
+                // Shield Powerup
+                coins.push({
+                    x: canvas.width,
+                    y: GROUND_Y - 45,
+                    size: 14,
+                    type: 'shield',
+                    color: '#00f2fe'
+                });
+            }
+
+            // Spawn Gold Coins pattern
+            if (Math.random() > 0.4) {
+                for (let i = 0; i < 3; i++) {
+                    coins.push({
+                        x: canvas.width + 50 + (i * 22),
+                        y: GROUND_Y - (Math.random() > 0.5 ? 20 : 50),
+                        size: 10,
+                        type: 'coin',
+                        color: '#ffbd03'
+                    });
+                }
+            }
+        }
+
+        function update() {
+            if (!isRunning) return;
+
+            // Player Physics
+            player.vy += player.gravity;
+            player.y += player.vy;
+
+            if (player.y >= GROUND_Y - player.height) {
+                player.y = GROUND_Y - player.height;
+                player.vy = 0;
+                player.isGrounded = true;
+                player.jumpCount = 0;
+            }
+
+            // Score & Difficulty Scaling
+            score++;
+            scoreEl.innerText = Math.floor(score / 10);
+            gameSpeed = 5 + Math.floor(score / 500) * 0.5;
+
+            // Spawn Timer
+            spawnTimer++;
+            if (spawnTimer > 80 - Math.min(30, Math.floor(score / 300))) {
+                spawnObstacle();
+                spawnTimer = 0;
+            }
+
+            // Update Obstacles
+            obstacles.forEach((obs, oIndex) => {
+                obs.x -= gameSpeed;
+
+                // Collision Detection with Player
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    if (hasShield) {
+                        hasShield = false;
+                        obstacles.splice(oIndex, 1);
+                        statusBadge.classList.remove('active');
+                        playSound(300, 'square', 0.2);
+                        for (let i = 0; i < 15; i++) {
+                            particles.push({
+                                x: player.x, y: player.y,
+                                vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+                                size: 3, color: '#00f2fe', life: 1
+                            });
+                        }
+                    } else {
+                        return gameOver();
+                    }
+                }
+
+                if (obs.x < -obs.width) obstacles.splice(oIndex, 1);
+            });
+
+            // Update Coins & Powerups
+            coins.forEach((c, cIndex) => {
+                c.x -= gameSpeed;
+
+                if (
+                    player.x < c.x + c.size &&
+                    player.x + player.width > c.x &&
+                    player.y < c.y + c.size &&
+                    player.y + player.height > c.y
+                ) {
+                    if (c.type === 'shield') {
+                        hasShield = true;
+                        statusBadge.classList.add('active');
+                        playSound(800, 'sine', 0.2);
+                    } else {
+                        score += 50;
+                        playSound(650, 'square', 0.08);
+                    }
+                    
+                    for (let i = 0; i < 8; i++) {
+                        particles.push({
+                            x: c.x, y: c.y,
+                            vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+                            size: 2, color: c.color, life: 1
+                        });
+                    }
+                    coins.splice(cIndex, 1);
+                }
+
+                if (c.x < -20) coins.splice(cIndex, 1);
+            });
+
+            // Update Particles
+            particles.forEach((p, pIndex) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.04;
+                if (p.life <= 0) particles.splice(pIndex, 1);
+            });
+        }
+
+        function draw() {
+            // Background Clear
+            ctx.fillStyle = '#05050a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Ground Floor
+            ctx.fillStyle = '#00f2fe';
+            ctx.shadowColor = '#00f2fe';
+            ctx.shadowBlur = 10;
+            ctx.fillRect(0, GROUND_Y, canvas.width, 2);
+            ctx.shadowBlur = 0;
+
+            // Background Grid Lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            for (let i = 0; i < canvas.width; i += 30) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+            }
+
+            // Draw Player
+            ctx.save();
+            ctx.fillStyle = '#00f2fe';
+            ctx.shadowColor = '#00f2fe';
+            ctx.shadowBlur = 12;
+
+            if (player.isSliding) {
+                ctx.beginPath();
+                ctx.roundRect(player.x, player.y, player.width + 6, player.height, 4);
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.roundRect(player.x, player.y, player.width, player.height, 6);
+                ctx.fill();
+            }
+
+            // Shield Glow Aura
+            if (hasShield) {
+                ctx.strokeStyle = '#00f2fe';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(player.x + player.width/2, player.y + player.height/2, 20, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Draw Obstacles
+            obstacles.forEach(obs => {
+                ctx.fillStyle = obs.color;
+                ctx.shadowColor = obs.color;
+                ctx.shadowBlur = 10;
+
+                if (obs.type === 'spike') {
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x, obs.y + obs.height);
+                    ctx.lineTo(obs.x + obs.width / 2, obs.y);
+                    ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (obs.type === 'high_laser') {
+                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                }
+            });
+            ctx.shadowBlur = 0;
+
+            // Draw Coins
+            coins.forEach(c => {
+                ctx.fillStyle = c.color;
+                ctx.shadowColor = c.color;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            if (isRunning) gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isRunning = false;
+            playSound(120, 'sawtooth', 0.4);
+
+            const finalDistance = Math.floor(score / 10);
+            if (finalDistance > highScore) {
+                highScore = finalDistance;
+                localStorage.setItem('dungeondash_highscore', highScore);
+                highScoreEl.innerText = highScore;
+            }
+
+            finalScoreText.innerText = `Jarak Akhir: ${finalDistance}m`;
+            overlay.classList.add('active');
+        }
+
+        // Keyboard Event Listeners
+        document.addEventListener('keydown', e => {
+            if (['ArrowUp', 'ArrowDown', 'w', 's', ' '].includes(e.key.toLowerCase())) {
+                e.preventDefault();
+            }
+
+            if (!isRunning && (e.key === ' ' || e.key === 'Enter')) {
+                startGame();
+                return;
+            }
+
+            const k = e.key.toLowerCase();
+            if (k === 'arrowup' || k === 'w' || k === ' ') triggerJump();
+            if (k === 'arrowdown' || k === 's') startSlide();
+        });
+
+        document.addEventListener('keyup', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'arrowdown' || k === 's') stopSlide();
+        });
+
+        // Mobile Controls Listeners
+        const btnJump = document.getElementById('btnJump');
+        const btnSlide = document.getElementById('btnSlide');
+
+        btnJump.addEventListener('touchstart', e => { e.preventDefault(); triggerJump(); });
+        btnJump.addEventListener('mousedown', () => triggerJump());
+
+        btnSlide.addEventListener('touchstart', e => { e.preventDefault(); startSlide(); });
+        btnSlide.addEventListener('touchend', e => { e.preventDefault(); stopSlide(); });
+        btnSlide.addEventListener('mousedown', () => startSlide());
+        btnSlide.addEventListener('mouseup', () => stopSlide());
+
+        // Initial Start
+        startGame();
+    </script>
+</body>
+</html>

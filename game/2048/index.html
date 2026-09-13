@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon 2048 FX</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #03040a;
+            --card-bg: rgba(15, 23, 42, 0.75);
+            --border-color: rgba(0, 242, 254, 0.3);
+            --color-primary: #00f2fe;
+            --color-secondary: #7928ca;
+            --color-gold: #ffbd03;
+            --text-main: #f8fafc;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, rgba(0, 242, 254, 0.05) 0%, transparent 70%);
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+            width: 100%;
+            max-width: 420px;
+        }
+
+        /* Scoreboard */
+        .scoreboard {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 0.8rem 1.2rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+
+        .score-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .score-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .score-val {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        /* Grid Container 4x4 */
+        .grid-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1/1;
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 40px rgba(0, 242, 254, 0.15);
+            background: #000;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .cell {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            transition: all 0.15s ease-in-out;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Styling Warna Ubin Neon Berdasarkan Angka */
+        .cell[data-val="2"] { background: rgba(0, 242, 254, 0.15); color: #00f2fe; border-color: #00f2fe; box-shadow: 0 0 10px rgba(0, 242, 254, 0.3); }
+        .cell[data-val="4"] { background: rgba(0, 255, 136, 0.15); color: #00ff88; border-color: #00ff88; box-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+        .cell[data-val="8"] { background: rgba(255, 189, 3, 0.15); color: #ffbd03; border-color: #ffbd03; box-shadow: 0 0 12px rgba(255, 189, 3, 0.4); }
+        .cell[data-val="16"] { background: rgba(255, 107, 0, 0.2); color: #ff6b00; border-color: #ff6b00; box-shadow: 0 0 14px rgba(255, 107, 0, 0.5); }
+        .cell[data-val="32"] { background: rgba(255, 0, 85, 0.2); color: #ff0055; border-color: #ff0055; box-shadow: 0 0 16px rgba(255, 0, 85, 0.5); }
+        .cell[data-val="64"] { background: rgba(121, 40, 202, 0.25); color: #7928ca; border-color: #7928ca; box-shadow: 0 0 18px rgba(121, 40, 202, 0.6); }
+        .cell[data-val="128"] { background: rgba(255, 0, 212, 0.25); color: #ff00d4; border-color: #ff00d4; box-shadow: 0 0 20px rgba(255, 0, 212, 0.6); font-size: 1.3rem; }
+        .cell[data-val="256"] { background: rgba(0, 184, 255, 0.3); color: #00b8ff; border-color: #00b8ff; box-shadow: 0 0 22px rgba(0, 184, 255, 0.7); font-size: 1.3rem; }
+        .cell[data-val="512"] { background: rgba(0, 255, 204, 0.3); color: #00ffcc; border-color: #00ffcc; box-shadow: 0 0 24px rgba(0, 255, 204, 0.7); font-size: 1.3rem; }
+        .cell[data-val="1024"] { background: rgba(255, 215, 0, 0.35); color: #ffd700; border-color: #ffd700; box-shadow: 0 0 26px rgba(255, 215, 0, 0.8); font-size: 1.1rem; }
+        .cell[data-val="2048"] { background: linear-gradient(135deg, rgba(0, 242, 254, 0.5), rgba(121, 40, 202, 0.5)); color: #ffffff; border-color: #ffffff; box-shadow: 0 0 30px rgba(255, 255, 255, 0.9); font-size: 1.1rem; }
+
+        /* Overlay */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(3, 4, 10, 0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.2rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+            border-radius: 24px;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .overlay h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0, 242, 254, 0.5);
+        }
+
+        .btn-play {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            color: #fff;
+            font-weight: 800;
+            font-size: 0.95rem;
+            padding: 0.8rem 2.2rem;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(0, 242, 254, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 35px rgba(0, 242, 254, 0.8);
+        }
+
+        .instructions {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-wrapper">
+        <!-- Dashboard Header -->
+        <div class="scoreboard">
+            <div class="score-box">
+                <span class="score-label">Skor</span>
+                <span class="score-val" id="score">0</span>
+            </div>
+
+            <div class="score-box" style="text-align: right;">
+                <span class="score-label">Rekor</span>
+                <span class="score-val" id="highScore" style="color: var(--color-gold)">0</span>
+            </div>
+        </div>
+
+        <!-- Grid Arena -->
+        <div class="grid-container" id="gridContainer">
+            <!-- 16 Cells di-render lewat JS -->
+            <div class="overlay" id="overlay">
+                <h1 id="overlayTitle">NEON 2048</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem;" id="finalScoreText">Skor Akhir: 0</p>
+                <button class="btn-play" onclick="startGame()">RESET GAME 🔢</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            Gunakan Tombol Panah / WASD / Usap Layar (Swipe) untuk Menggeser Ubin
+        </div>
+    </div>
+
+    <script>
+        const gridContainer = document.getElementById('gridContainer');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const finalScoreText = document.getElementById('finalScoreText');
+
+        let board = Array(4).fill(null).map(() => Array(4).fill(0));
+        let score = 0;
+        let highScore = localStorage.getItem('neon2048_highscore') || 0;
+        let isRunning = false;
+
+        highScoreEl.innerText = highScore;
+
+        // Web Audio Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.08) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        function initGridDOM() {
+            // Bersihkan sel kecuali overlay
+            const cells = gridContainer.querySelectorAll('.cell');
+            cells.forEach(c => c.remove());
+
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.id = `cell-${r}-${c}`;
+                    gridContainer.insertBefore(cell, overlay);
+                }
+            }
+        }
+
+        function updateBoardDOM() {
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const cell = document.getElementById(`cell-${r}-${c}`);
+                    const val = board[r][c];
+                    cell.innerText = val > 0 ? val : '';
+                    if (val > 0) {
+                        cell.setAttribute('data-val', val);
+                    } else {
+                        cell.removeAttribute('data-val');
+                    }
+                }
+            }
+            scoreEl.innerText = score;
+        }
+
+        function addRandomTile() {
+            let emptyCells = [];
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    if (board[r][c] === 0) emptyCells.push({ r, c });
+                }
+            }
+            if (emptyCells.length > 0) {
+                let randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                board[randomCell.r][randomCell.c] = Math.random() < 0.9 ? 2 : 4;
+            }
+        }
+
+        function startGame() {
+            board = Array(4).fill(null).map(() => Array(4).fill(0));
+            score = 0;
+            initGridDOM();
+            addRandomTile();
+            addRandomTile();
+            updateBoardDOM();
+
+            overlay.classList.remove('active');
+            isRunning = true;
+        }
+
+        // Logika Pergeseran Baris (Sliding Logic)
+        function slide(row) {
+            let arr = row.filter(val => val !== 0);
+            for (let i = 0; i < arr.length - 1; i++) {
+                if (arr[i] === arr[i + 1]) {
+                    arr[i] *= 2;
+                    score += arr[i];
+                    arr[i + 1] = 0;
+                    playSound(300 + Math.log2(arr[i]) * 50, 'sine', 0.1);
+                }
+            }
+            arr = arr.filter(val => val !== 0);
+            while (arr.length < 4) {
+                arr.push(0);
+            }
+            return arr;
+        }
+
+        function moveLeft() {
+            let moved = false;
+            for (let r = 0; r < 4; r++) {
+                let oldRow = board[r];
+                let newRow = slide(board[r]);
+                board[r] = newRow;
+                if (oldRow.toString() !== newRow.toString()) moved = true;
+            }
+            return moved;
+        }
+
+        function rotateBoard() {
+            let newBoard = Array(4).fill(null).map(() => Array(4).fill(0));
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    newBoard[c][3 - r] = board[r][c];
+                }
+            }
+            board = newBoard;
+        }
+
+        function move(direction) {
+            if (!isRunning) return;
+            let moved = false;
+
+            // 0: Left, 1: Down, 2: Right, 3: Up
+            let rotations = direction;
+            for (let i = 0; i < rotations; i++) {
+                rotateBoard();
+            }
+
+            moved = moveLeft();
+
+            for (let i = 0; i < (4 - rotations) % 4; i++) {
+                rotateBoard();
+            }
+
+            if (moved) {
+                playSound(200, 'triangle', 0.04);
+                addRandomTile();
+                updateBoardDOM();
+                checkGameOver();
+            }
+        }
+
+        function checkGameOver() {
+            // Cek apakah ada sel kosong
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    if (board[r][c] === 0) return;
+                    if (c < 3 && board[r][c] === board[r][c + 1]) return;
+                    if (r < 3 && board[r][c] === board[r + 1][c]) return;
+                }
+            }
+
+            // Jika tidak ada langkah tersisa -> Game Over
+            isRunning = false;
+            playSound(150, 'sawtooth', 0.4);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neon2048_highscore', highScore);
+                highScoreEl.innerText = highScore;
+            }
+
+            overlayTitle.innerText = "NO MOVES!";
+            finalScoreText.innerText = `Skor Akhir: ${score}`;
+            overlay.classList.add('active');
+        }
+
+        // Keyboard Controls Handler
+        document.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') move(0);
+            else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') move(1);
+            else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') move(2);
+            else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') move(3);
+        });
+
+        // Touch Swipe Control Handler
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        gridContainer.addEventListener('touchstart', e => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        gridContainer.addEventListener('touchend', e => {
+            let touchEndX = e.changedTouches[0].clientX;
+            let touchEndY = e.changedTouches[0].clientY;
+
+            let dx = touchEndX - touchStartX;
+            let dy = touchEndY - touchStartY;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (Math.abs(dx) > 30) {
+                    if (dx > 0) move(2); // Right
+                    else move(0); // Left
+                }
+            } else {
+                if (Math.abs(dy) > 30) {
+                    if (dy > 0) move(1); // Down
+                    else move(3); // Up
+                }
+            }
+        }, { passive: true });
+
+        // Initial Launch
+        startGame();
+    </script>
+</body>
+</html>

@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Space Defender - Power Up Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            touch-action: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #050510;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            updateTouchLayout();
+        }
+
+        // State Utama Game
+        let score = 0;
+        let gameOver = false;
+        let gameStarted = false;
+        let touchEnabled = true;
+
+        // Kontrol Input Keyboard
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // UI Touch Controls & Toggle
+        let joystick = { baseX: 0, baseY: 0, currX: 0, currY: 0, active: false, id: null };
+        let shootBtn = { x: 0, y: 0, radius: 45, active: false, id: null };
+        let toggleBtn = { x: 0, y: 0, w: 140, h: 40 };
+
+        function updateTouchLayout() {
+            joystick.baseX = 100;
+            joystick.baseY = canvas.height - 100;
+            joystick.currX = joystick.baseX;
+            joystick.currY = joystick.baseY;
+
+            shootBtn.x = canvas.width - 90;
+            shootBtn.y = canvas.height - 90;
+
+            toggleBtn.x = canvas.width - 160;
+            toggleBtn.y = 20;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Handler Event Touch
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+        canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+        // Handler Klik Mouse
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            // Toggle Touch UI Button
+            if (clickX >= toggleBtn.x && clickX <= toggleBtn.x + toggleBtn.w &&
+                clickY >= toggleBtn.y && clickY <= toggleBtn.y + toggleBtn.h) {
+                touchEnabled = !touchEnabled;
+                return;
+            }
+
+            if (!gameStarted) {
+                gameStarted = true;
+                resetGame();
+            } else if (gameOver) {
+                resetGame();
+            }
+        });
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            for (let touch of e.changedTouches) {
+                const tx = touch.clientX;
+                const ty = touch.clientY;
+
+                if (tx >= toggleBtn.x && tx <= toggleBtn.x + toggleBtn.w &&
+                    ty >= toggleBtn.y && ty <= toggleBtn.y + toggleBtn.h) {
+                    touchEnabled = !touchEnabled;
+                    continue;
+                }
+
+                if (!gameStarted) {
+                    gameStarted = true;
+                    resetGame();
+                    continue;
+                } else if (gameOver) {
+                    resetGame();
+                    continue;
+                }
+
+                if (!touchEnabled) continue;
+
+                const distShoot = Math.hypot(tx - shootBtn.x, ty - shootBtn.y);
+                if (distShoot < shootBtn.radius + 20 && shootBtn.id === null) {
+                    shootBtn.active = true;
+                    shootBtn.id = touch.identifier;
+                    player.shoot();
+                    continue;
+                }
+
+                if (tx < canvas.width / 2 && joystick.id === null) {
+                    joystick.active = true;
+                    joystick.id = touch.identifier;
+                    joystick.currX = tx;
+                    joystick.currY = ty;
+                }
+            }
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!touchEnabled || !gameStarted || gameOver) return;
+
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === joystick.id) {
+                    const maxDist = 60;
+                    const dx = touch.clientX - joystick.baseX;
+                    const dy = touch.clientY - joystick.baseY;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist > maxDist) {
+                        const angle = Math.atan2(dy, dx);
+                        joystick.currX = joystick.baseX + Math.cos(angle) * maxDist;
+                        joystick.currY = joystick.baseY + Math.sin(angle) * maxDist;
+                    } else {
+                        joystick.currX = touch.clientX;
+                        joystick.currY = touch.clientY;
+                    }
+                }
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === joystick.id) {
+                    joystick.active = false;
+                    joystick.id = null;
+                    joystick.currX = joystick.baseX;
+                    joystick.currY = joystick.baseY;
+                }
+                if (touch.identifier === shootBtn.id) {
+                    shootBtn.active = false;
+                    shootBtn.id = null;
+                }
+            }
+        }
+
+        // Bintang Latar Belakang
+        const stars = Array.from({ length: 150 }, () => ({
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            size: Math.random() * 2,
+            speed: Math.random() * 1.5 + 0.5
+        }));
+
+        // System Audio Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.1) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        // Entitas Power-Up
+        class PowerUp {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type; // 'TRIPLE', 'SHIELD', atau 'SPEED'
+                this.radius = 15;
+                this.speed = 2;
+                
+                if (type === 'TRIPLE') { this.color = '#00ff88'; this.icon = '3X'; }
+                else if (type === 'SHIELD') { this.color = '#00b8ff'; this.icon = '🛡️'; }
+                else if (type === 'SPEED') { this.color = '#ffbd03'; this.icon = '⚡'; }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.icon, this.x, this.y);
+                ctx.restore();
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+        }
+
+        // Entitas Player
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height - 120;
+                this.radius = 20;
+                this.speed = 7;
+                this.color = '#00f3ff';
+                this.lastShootTime = 0;
+
+                // Power-Up States
+                this.tripleShotTimer = 0;
+                this.shieldActive = false;
+                this.speedBoostTimer = 0;
+            }
+
+            draw() {
+                ctx.save();
+                // Draw Shield Glow jika aktif
+                if (this.shieldActive) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius + 12, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#00b8ff';
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#00b8ff';
+                    ctx.stroke();
+                }
+
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y - this.radius);
+                ctx.lineTo(this.x - this.radius, this.y + this.radius);
+                ctx.lineTo(this.x + this.radius, this.y + this.radius);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                let currentSpeed = this.speedBoostTimer > 0 ? this.speed * 1.5 : this.speed;
+
+                if (keys['ArrowLeft'] || keys['KeyA']) this.x -= currentSpeed;
+                if (keys['ArrowRight'] || keys['KeyD']) this.x += currentSpeed;
+                if (keys['ArrowUp'] || keys['KeyW']) this.y -= currentSpeed;
+                if (keys['ArrowDown'] || keys['KeyS']) this.y += currentSpeed;
+
+                if (touchEnabled && joystick.active) {
+                    const dx = joystick.currX - joystick.baseX;
+                    const dy = joystick.currY - joystick.baseY;
+                    this.x += (dx / 60) * currentSpeed;
+                    this.y += (dy / 60) * currentSpeed;
+                }
+
+                if (this.x - this.radius < 0) this.x = this.radius;
+                if (this.x + this.radius > canvas.width) this.x = canvas.width - this.radius;
+                if (this.y - this.radius < 0) this.y = this.radius;
+                if (this.y + this.radius > canvas.height) this.y = canvas.height - this.radius;
+
+                // Timer Power Up
+                if (this.tripleShotTimer > 0) this.tripleShotTimer--;
+                if (this.speedBoostTimer > 0) this.speedBoostTimer--;
+            }
+
+            shoot() {
+                playSound(600, 'square', 0.05);
+                if (this.tripleShotTimer > 0) {
+                    // Tembakan Lurus + Diagonal Kiri & Kanan
+                    bullets.push(new Bullet(this.x, this.y - this.radius, 0, -11));
+                    bullets.push(new Bullet(this.x - 10, this.y - this.radius, -2, -10));
+                    bullets.push(new Bullet(this.x + 10, this.y - this.radius, 2, -10));
+                } else {
+                    bullets.push(new Bullet(this.x, this.y - this.radius, 0, -11));
+                }
+            }
+
+            applyPowerUp(type) {
+                playSound(900, 'sine', 0.2);
+                if (type === 'TRIPLE') this.tripleShotTimer = 400; // ~6.5 Detik
+                else if (type === 'SHIELD') this.shieldActive = true;
+                else if (type === 'SPEED') this.speedBoostTimer = 400;
+            }
+        }
+
+        // Entitas Peluru
+        class Bullet {
+            constructor(x, y, vx = 0, vy = -11) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.radius = 4;
+                this.color = '#ff0055';
+            }
+
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+        }
+
+        // Entitas Musuh
+        class Enemy {
+            constructor() {
+                this.radius = Math.random() * 20 + 15;
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                this.speed = Math.random() * 3 + 2;
+                this.color = '#ffaa00';
+            }
+
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+        }
+
+        // Partikel Ledakan
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3 + 1;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = (Math.random() - 0.5) * 6;
+                this.alpha = 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.02;
+            }
+        }
+
+        let player = new Player();
+        let bullets = [];
+        let enemies = [];
+        let particles = [];
+        let powerUps = [];
+        let enemySpawnTimer = 0;
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function resetGame() {
+            player = new Player();
+            bullets = [];
+            enemies = [];
+            particles = [];
+            powerUps = [];
+            score = 0;
+            gameOver = false;
+        }
+
+        function drawTouchUI() {
+            ctx.save();
+            ctx.fillStyle = touchEnabled ? 'rgba(0, 243, 255, 0.2)' : 'rgba(255, 0, 85, 0.2)';
+            ctx.strokeStyle = touchEnabled ? '#00f3ff' : '#ff0055';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(toggleBtn.x, toggleBtn.y, toggleBtn.w, toggleBtn.h, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`TOUCH: ${touchEnabled ? 'ON 🟢' : 'OFF 🔴'}`, toggleBtn.x + toggleBtn.w / 2, toggleBtn.y + toggleBtn.h / 2);
+            ctx.restore();
+
+            if (!touchEnabled) return;
+
+            // Render Virtual Joystick
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(joystick.baseX, joystick.baseY, 60, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeStyle = 'rgba(0, 243, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(joystick.currX, joystick.currY, 25, 0, Math.PI * 2);
+            ctx.fillStyle = joystick.active ? 'rgba(0, 243, 255, 0.6)' : 'rgba(0, 243, 255, 0.3)';
+            ctx.fill();
+            ctx.restore();
+
+            // Render Tombol Tembak
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(shootBtn.x, shootBtn.y, shootBtn.radius, 0, Math.PI * 2);
+            ctx.fillStyle = shootBtn.active ? 'rgba(255, 0, 85, 0.6)' : 'rgba(255, 0, 85, 0.3)';
+            ctx.strokeStyle = '#ff0055';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('FIRE', shootBtn.x, shootBtn.y);
+            ctx.restore();
+        }
+
+        // Loop Utama Game
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            ctx.fillStyle = '#050510';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            stars.forEach(star => {
+                star.y += star.speed;
+                if (star.y > canvas.height) star.y = 0;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            });
+
+            if (!gameStarted) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#00f3ff';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00f3ff';
+                ctx.font = 'bold 40px sans-serif';
+                ctx.fillText('NEON SPACE DEFENDER', canvas.width / 2, canvas.height / 2 - 30);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.font = '18px sans-serif';
+                ctx.fillText('Tap Layar / Klik di Mana Saja untuk Memulai', canvas.width / 2, canvas.height / 2 + 30);
+                ctx.restore();
+
+                drawTouchUI();
+                return;
+            }
+
+            if (gameOver) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ff0055';
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#ff0055';
+                ctx.font = 'bold 50px sans-serif';
+                ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.font = '22px sans-serif';
+                ctx.fillText(`Skor Akhir: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
+                ctx.font = '16px sans-serif';
+                ctx.fillText('Tap Layar / Klik untuk Main Lagi', canvas.width / 2, canvas.height / 2 + 60);
+                ctx.restore();
+
+                drawTouchUI();
+                return;
+            }
+
+            if ((keys['Space'] || (touchEnabled && shootBtn.active)) && timestamp - player.lastShootTime > 150) {
+                player.shoot();
+                player.lastShootTime = timestamp;
+            }
+
+            player.update();
+            player.draw();
+
+            enemySpawnTimer++;
+            if (enemySpawnTimer % 40 === 0) {
+                enemies.push(new Enemy());
+            }
+
+            bullets.forEach((bullet, index) => {
+                bullet.update();
+                bullet.draw();
+                if (bullet.y < 0 || bullet.x < 0 || bullet.x > canvas.width) bullets.splice(index, 1);
+            });
+
+            particles.forEach((particle, index) => {
+                if (particle.alpha <= 0) particles.splice(index, 1);
+                else { particle.update(); particle.draw(); }
+            });
+
+            // Update & Deteksi Power-Up
+            powerUps.forEach((pUp, pIndex) => {
+                pUp.update();
+                pUp.draw();
+
+                // Cek Kontak Player dengan Power-Up
+                const dist = Math.hypot(player.x - pUp.x, player.y - pUp.y);
+                if (dist - pUp.radius - player.radius < 1) {
+                    player.applyPowerUp(pUp.type);
+                    powerUps.splice(pIndex, 1);
+                }
+
+                if (pUp.y - pUp.radius > canvas.height) powerUps.splice(pIndex, 1);
+            });
+
+            // Update & Deteksi Musuh
+            enemies.forEach((enemy, eIndex) => {
+                enemy.update();
+                enemy.draw();
+
+                // Tabrakan Musuh vs Player
+                const distPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                if (distPlayer - enemy.radius - player.radius < 1) {
+                    if (player.shieldActive) {
+                        player.shieldActive = false; // Pelindung Hancur
+                        createExplosion(enemy.x, enemy.y, enemy.color);
+                        playSound(300, 'triangle', 0.2);
+                        enemies.splice(eIndex, 1);
+                    } else {
+                        createExplosion(player.x, player.y, player.color);
+                        createExplosion(enemy.x, enemy.y, enemy.color);
+                        playSound(150, 'sawtooth', 0.4);
+                        gameOver = true;
+                    }
+                }
+
+                // Tabrakan Musuh vs Peluru
+                bullets.forEach((bullet, bIndex) => {
+                    const distBullet = Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y);
+                    if (distBullet - enemy.radius - bullet.radius < 1) {
+                        createExplosion(enemy.x, enemy.y, enemy.color);
+                        score += 10;
+                        playSound(400, 'sine', 0.08);
+
+                        // Chance Spawn Power-Up (20% Kemungkinan Drop saat Musuh Hancur)
+                        if (Math.random() < 0.20) {
+                            const types = ['TRIPLE', 'SHIELD', 'SPEED'];
+                            const selectedType = types[Math.floor(Math.random() * types.length)];
+                            powerUps.push(new PowerUp(enemy.x, enemy.y, selectedType));
+                        }
+
+                        setTimeout(() => {
+                            enemies.splice(eIndex, 1);
+                            bullets.splice(bIndex, 1);
+                        }, 0);
+                    }
+                });
+
+                if (enemy.y - enemy.radius > canvas.height) enemies.splice(eIndex, 1);
+            });
+
+            // Render HUD / Informasi Skor & Active Power-Ups
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 24px monospace';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f3ff';
+            ctx.fillText(`SCORE: ${score}`, 30, 45);
+
+            // Power Up Indicators
+            let hudY = 75;
+            ctx.font = 'bold 12px sans-serif';
+            if (player.tripleShotTimer > 0) {
+                ctx.fillStyle = '#00ff88';
+                ctx.fillText(`TRIPLE SHOT: ${(player.tripleShotTimer/60).toFixed(1)}s`, 30, hudY);
+                hudY += 20;
+            }
+            if (player.speedBoostTimer > 0) {
+                ctx.fillStyle = '#ffbd03';
+                ctx.fillText(`SPEED BOOST: ${(player.speedBoostTimer/60).toFixed(1)}s`, 30, hudY);
+                hudY += 20;
+            }
+            if (player.shieldActive) {
+                ctx.fillStyle = '#00b8ff';
+                ctx.fillText(`SHIELD ACTIVE`, 30, hudY);
+            }
+            ctx.restore();
+
+            drawTouchUI();
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

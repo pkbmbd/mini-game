@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Chess: Standard Rules & Power-Ups</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: #090a0f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: #12141d;
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: 1px solid #1f2333;
+        }
+        select, button.btn-reset {
+            background: #181b26;
+            color: #00f2fe;
+            border: 1px solid #2d334a;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            outline: none;
+            cursor: pointer;
+        }
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 520px;
+            background: #12141d;
+            padding: 10px 18px;
+            border-radius: 12px;
+            border: 1px solid #1f2333;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .turn-box {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .turn-text {
+            font-weight: bold;
+            font-size: 1rem;
+            color: #ffffff;
+        }
+        .mana-bar-bg {
+            width: 120px;
+            height: 8px;
+            background: #1c2030;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #2d334a;
+        }
+        .mana-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #00b4db, #0083b0);
+            box-shadow: 0 0 8px #00b4db;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .powers {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-power {
+            background: #181b26;
+            color: #fff;
+            border: 1px solid #2d334a;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .btn-power:hover:not(:disabled) {
+            background: #00f2fe;
+            color: #000;
+            border-color: #00f2fe;
+            box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
+        }
+        .btn-power.active {
+            background: #00f2fe;
+            color: #000;
+            border-color: #00f2fe;
+            box-shadow: 0 0 14px rgba(0, 242, 254, 0.8);
+        }
+        .btn-power:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            border-color: #222;
+        }
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.8);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="control-panel">
+            <label style="font-size: 13px;">Mode Main:</label>
+            <select id="gameMode" onchange="resetGame()">
+                <option value="ai">Lawan AI (Komputer)</option>
+                <option value="pvp">2 Pemain (Lokal)</option>
+            </select>
+            
+            <label style="font-size: 13px; margin-left: 10px;">Tingkat AI:</label>
+            <select id="aiDifficulty" onchange="resetGame()">
+                <option value="easy">Mudah</option>
+                <option value="medium" selected>Sedang</option>
+                <option value="hard">Sulit</option>
+            </select>
+
+            <button class="btn-reset" onclick="resetGame()" style="margin-left: 10px; border-color:#ff0055; color:#ff0055;">Reset</button>
+        </div>
+
+        <div class="hud">
+            <div class="turn-box">
+                <div id="turnText" class="turn-text">Giliran: Putih</div>
+                <div style="font-size: 11px; color: #8a92b2;">Mana: <span id="manaVal">1</span>/5</div>
+                <div class="mana-bar-bg">
+                    <div id="manaFill" class="mana-bar-fill"></div>
+                </div>
+            </div>
+            
+            <div class="powers">
+                <button class="btn-power" id="btnShield" onclick="togglePower('shield')">🛡️ Perisai (2M)</button>
+                <button class="btn-power" id="btnFreeze" onclick="togglePower('freeze')">❄️ Bekukan (4M)</button>
+                <button class="btn-power" id="btnTeleport" onclick="togglePower('teleport')">🌀 Teleport (3M)</button>
+            </div>
+        </div>
+
+        <canvas id="chessCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('chessCanvas');
+        const ctx = canvas.getContext('2d');
+        const size = Math.min(window.innerWidth - 40, 520);
+        canvas.width = size; 
+        canvas.height = size;
+        const tileSize = size / 8;
+
+        const PIECES = { 
+            'r':'♜','n':'♞','b':'♝','q':'♛','k':'♚','p':'♟',
+            'R':'♖','N':'♘','B':'♗','Q':'♕','K':'♔','P':'♙' 
+        };
+
+        const PIECE_VALUES = { 'p': 10, 'n': 30, 'b': 30, 'r': 50, 'q': 90, 'k': 1000 };
+
+        let board = [];
+        let pieceObjects = [];
+        let particles = [];
+        let turn = 'w';
+        let mana = { w: 1, b: 0 };
+        let selected = null;
+        let validMoves = [];
+        let shields = {};
+        let freezes = {};
+        let activePower = null;
+
+        class PieceObject {
+            constructor(type, r, c) {
+                this.type = type;
+                this.r = r; this.c = c;
+                this.x = c * tileSize; this.y = r * tileSize;
+                this.targetX = this.x; this.targetY = this.y;
+            }
+
+            moveTo(r, c) {
+                this.r = r; this.c = c;
+                this.targetX = c * tileSize;
+                this.targetY = r * tileSize;
+            }
+
+            update() {
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+                    this.x += dx * 0.2;
+                    this.y += dy * 0.2;
+                    if (Math.random() < 0.3) {
+                        particles.push(new Particle(this.x + tileSize / 2, this.y + tileSize / 2, this.type === this.type.toUpperCase() ? '#00f2fe' : '#ff0055'));
+                    }
+                } else {
+                    this.x = this.targetX;
+                    this.y = this.targetY;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.fillStyle = this.type === this.type.toUpperCase() ? '#ffffff' : '#111116';
+                ctx.font = `${tileSize * 0.7}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.shadowColor = this.type === this.type.toUpperCase() ? 'rgba(0, 242, 254, 0.4)' : 'rgba(255, 0, 85, 0.4)';
+                ctx.shadowBlur = 8;
+                ctx.fillText(PIECES[this.type], this.x + tileSize / 2, this.y + tileSize / 2 + 2);
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.radius = Math.random() * 3 + 1;
+                this.vx = (Math.random() - 0.5) * 2.5;
+                this.vy = (Math.random() - 0.5) * 2.5;
+                this.alpha = 1;
+            }
+            update() { this.x += this.vx; this.y += this.vy; this.alpha -= 0.04; }
+            draw() {
+                ctx.save(); ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function initBoard() {
+            board = [
+                ['r','n','b','q','k','b','n','r'],
+                ['p','p','p','p','p','p','p','p'],
+                ['','','','','','','',''],['','','','','','','',''],
+                ['','','','','','','',''],['','','','','','','',''],
+                ['P','P','P','P','P','P','P','P'],
+                ['R','N','B','Q','K','B','N','R']
+            ];
+            
+            pieceObjects = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (board[r][c] !== '') pieceObjects.push(new PieceObject(board[r][c], r, c));
+                }
+            }
+
+            turn = 'w'; mana = { w: 1, b: 0 }; shields = {}; freezes = {};
+            selected = null; activePower = null;
+            updateHUD();
+        }
+
+        function updateHUD() {
+            const mode = document.getElementById('gameMode').value;
+            const turnLabel = turn === 'w' ? 'Putih' : (mode === 'ai' ? 'AI (Hitam)' : 'Hitam');
+            document.getElementById('turnText').innerText = `Giliran: ${turnLabel}`;
+            document.getElementById('manaVal').innerText = mana[turn];
+            document.getElementById('manaFill').style.width = `${(mana[turn] / 5) * 100}%`;
+
+            const isHumanTurn = mode === 'pvp' || (mode === 'ai' && turn === 'w');
+            document.getElementById('btnShield').disabled = !isHumanTurn || mana[turn] < 2;
+            document.getElementById('btnFreeze').disabled = !isHumanTurn || mana[turn] < 4;
+            document.getElementById('btnTeleport').disabled = !isHumanTurn || mana[turn] < 3;
+
+            document.getElementById('btnShield').classList.toggle('active', activePower === 'shield');
+            document.getElementById('btnFreeze').classList.toggle('active', activePower === 'freeze');
+            document.getElementById('btnTeleport').classList.toggle('active', activePower === 'teleport');
+        }
+
+        function togglePower(type) {
+            activePower = activePower === type ? null : type;
+            if (selected && activePower === 'teleport') {
+                validMoves = getTeleportMoves(selected.r, selected.c);
+            } else if (selected) {
+                validMoves = getStandardChessMoves(selected.r, selected.c);
+            }
+            updateHUD();
+        }
+
+        function isWhite(piece) { return piece !== '' && piece === piece.toUpperCase(); }
+        function isSameColor(p1, p2) {
+            if (!p1 || !p2) return false;
+            return (isWhite(p1) && isWhite(p2)) || (!isWhite(p1) && !isWhite(p2));
+        }
+
+        // ================= ATURAN PERGERAKAN CATUR STANDAR =================
+        function getStandardChessMoves(r, c) {
+            const piece = board[r][c];
+            if (!piece) return [];
+
+            const moves = [];
+            const type = piece.toLowerCase();
+            const color = isWhite(piece) ? 'w' : 'b';
+
+            const addMove = (tr, tc) => {
+                if (tr < 0 || tr >= 8 || tc < 0 || tc >= 8) return false;
+                const target = board[tr][tc];
+                if (target === '') {
+                    moves.push({ r: tr, c: tc });
+                    return true;
+                }
+                if (!isSameColor(piece, target)) {
+                    moves.push({ r: tr, c: tc });
+                }
+                return false;
+            };
+
+            if (type === 'p') {
+                const dir = color === 'w' ? -1 : 1;
+                const startRow = color === 'w' ? 6 : 1;
+
+                if (r + dir >= 0 && r + dir < 8 && board[r + dir][c] === '') {
+                    moves.push({ r: r + dir, c: c });
+                    if (r === startRow && board[r + dir * 2][c] === '') {
+                        moves.push({ r: r + dir * 2, c: c });
+                    }
+                }
+                [-1, 1].forEach(dc => {
+                    const tr = r + dir, tc = c + dc;
+                    if (tr >= 0 && tr < 8 && tc >= 0 && tc < 8) {
+                        const target = board[tr][tc];
+                        if (target !== '' && !isSameColor(piece, target)) {
+                            moves.push({ r: tr, c: tc });
+                        }
+                    }
+                });
+            } else if (type === 'n') {
+                [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+            } else if (type === 'r' || type === 'b' || type === 'q') {
+                const dirs = [];
+                if (type === 'r' || type === 'q') dirs.push([-1,0], [1,0], [0,-1], [0,1]);
+                if (type === 'b' || type === 'q') dirs.push([-1,-1], [-1,1], [1,-1], [1,1]);
+
+                dirs.forEach(([dr, dc]) => {
+                    let step = 1;
+                    while (true) {
+                        if (!addMove(r + dr * step, c + dc * step)) break;
+                        step++;
+                    }
+                });
+            } else if (type === 'k') {
+                [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+            }
+
+            return moves;
+        }
+
+        // Teleport Power-Up: Membolehkan pindah ke petak kosong mana saja di papan
+        function getTeleportMoves(r, c) {
+            const moves = [];
+            for (let tr = 0; tr < 8; tr++) {
+                for (let tc = 0; tc < 8; tc++) {
+                    if (board[tr][tc] === '' && (tr !== r || tc !== c)) {
+                        moves.push({ r: tr, c: tc });
+                    }
+                }
+            }
+            return moves;
+        }
+
+        function spawnBurst(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) particles.push(new Particle(x, y, color));
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const mode = document.getElementById('gameMode').value;
+            if (mode === 'ai' && turn === 'b') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const c = Math.floor((e.clientX - rect.left) / tileSize);
+            const r = Math.floor((e.clientY - rect.top) / tileSize);
+            
+            executeTurnLogic(r, c);
+        });
+
+        function executeTurnLogic(r, c) {
+            const key = `${r},${c}`;
+
+            // Aktivasi Power-Up Target Langsung (Shield & Freeze)
+            if (activePower === 'shield' || activePower === 'freeze') {
+                if (board[r][c] !== '') {
+                    if (activePower === 'shield') {
+                        shields[key] = true; mana[turn] -= 2;
+                        spawnBurst((c + 0.5) * tileSize, (r + 0.5) * tileSize, '#00e5ff');
+                    } else if (activePower === 'freeze') {
+                        freezes[key] = 2; mana[turn] -= 4;
+                        spawnBurst((c + 0.5) * tileSize, (r + 0.5) * tileSize, '#0083b0');
+                    }
+                    activePower = null; updateHUD(); return;
+                }
+            }
+
+            if (freezes[key] > 0) return;
+
+            // Eksekusi Langkah
+            if (selected) {
+                const move = validMoves.find(m => m.r === r && m.c === c);
+                if (move) {
+                    if (activePower === 'teleport') {
+                        mana[turn] -= 3;
+                        activePower = null;
+                    }
+                    makeMove(selected.r, selected.c, r, c);
+                    return;
+                }
+            }
+
+            // Seleksi Bidak
+            const p = board[r][c];
+            if (p && ((turn === 'w' && isWhite(p)) || (turn === 'b' && !isWhite(p)))) {
+                selected = { r, c };
+                validMoves = activePower === 'teleport' ? getTeleportMoves(r, c) : getStandardChessMoves(r, c);
+            } else { 
+                selected = null; validMoves = []; 
+            }
+        }
+
+        function makeMove(fromR, fromC, toR, toC) {
+            const key = `${toR},${toC}`;
+            const movingPieceObj = pieceObjects.find(p => p.r === fromR && p.c === fromC);
+
+            if (shields[key]) {
+                delete shields[key];
+                spawnBurst((toC + 0.5) * tileSize, (toR + 0.5) * tileSize, '#ff0055');
+            } else {
+                const targetIdx = pieceObjects.findIndex(p => p.r === toR && p.c === toC);
+                if (targetIdx !== -1) {
+                    spawnBurst((toC + 0.5) * tileSize, (toR + 0.5) * tileSize, '#ff5722', 15);
+                    pieceObjects.splice(targetIdx, 1);
+                    mana[turn] = Math.min(5, mana[turn] + 2);
+                }
+
+                board[toR][toC] = board[fromR][fromC];
+                board[fromR][fromC] = '';
+
+                // Auto Promosi Pawn ke Ratu
+                if (board[toR][toC] === 'P' && toR === 0) board[toR][toC] = 'Q';
+                if (board[toR][toC] === 'p' && toR === 7) board[toR][toC] = 'q';
+                if (movingPieceObj) {
+                    movingPieceObj.type = board[toR][toC];
+                    movingPieceObj.moveTo(toR, toC);
+                }
+            }
+
+            Object.keys(freezes).forEach(k => { if (freezes[k] > 0) freezes[k]--; });
+
+            turn = turn === 'w' ? 'b' : 'w';
+            mana[turn] = Math.min(5, mana[turn] + 1);
+            selected = null; validMoves = []; activePower = null;
+            updateHUD();
+
+            const mode = document.getElementById('gameMode').value;
+            if (mode === 'ai' && turn === 'b') {
+                setTimeout(triggerAiTurn, 600);
+            }
+        }
+
+        function triggerAiTurn() {
+            if (turn !== 'b') return;
+            const diff = document.getElementById('aiDifficulty').value;
+
+            // AI Menggunakan Power-Up Taktis
+            if (diff !== 'easy') {
+                if (mana.b >= 4 && Math.random() < 0.5) {
+                    let targets = [];
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            if (board[r][c] !== '' && isWhite(board[r][c])) {
+                                targets.push({ r, c, val: PIECE_VALUES[board[r][c].toLowerCase()] || 0 });
+                            }
+                        }
+                    }
+                    targets.sort((a,b) => b.val - a.val);
+                    if (targets.length > 0) {
+                        freezes[`${targets[0].r},${targets[0].c}`] = 2;
+                        mana.b -= 4;
+                        spawnBurst((targets[0].c + 0.5) * tileSize, (targets[0].r + 0.5) * tileSize, '#0083b0');
+                    }
+                }
+            }
+
+            // Cari langkah legal berdasarkan Aturan Catur Standar
+            let allMoves = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const p = board[r][c];
+                    if (p && !isWhite(p) && !freezes[`${r},${c}`]) {
+                        const moves = getStandardChessMoves(r, c);
+                        moves.forEach(m => {
+                            let score = 0;
+                            const targetPiece = board[m.r][m.c];
+                            if (targetPiece && isWhite(targetPiece)) {
+                                score += (PIECE_VALUES[targetPiece.toLowerCase()] || 10) * 10;
+                            }
+                            allMoves.push({ fromR: r, fromC: c, toR: m.r, toC: m.c, score });
+                        });
+                    }
+                }
+            }
+
+            if (allMoves.length === 0) return;
+
+            if (diff === 'easy') {
+                allMoves.sort(() => Math.random() - 0.5);
+            } else {
+                allMoves.sort((a, b) => b.score - a.score);
+            }
+
+            makeMove(allMoves[0].fromR, allMoves[0].fromC, allMoves[0].toR, allMoves[0].toC);
+        }
+
+        function render() {
+            requestAnimationFrame(render);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    ctx.fillStyle = (r + c) % 2 === 0 ? '#1e2230' : '#141722';
+                    ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+
+                    const key = `${r},${c}`;
+                    if (shields[key]) { 
+                        ctx.fillStyle = 'rgba(0, 229, 255, 0.25)'; 
+                        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize); 
+                    }
+                    if (freezes[key]) { 
+                        ctx.fillStyle = 'rgba(0, 131, 176, 0.35)'; 
+                        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize); 
+                    }
+                }
+            }
+
+            if (selected) {
+                ctx.fillStyle = 'rgba(0, 242, 254, 0.2)';
+                ctx.fillRect(selected.c * tileSize, selected.r * tileSize, tileSize, tileSize);
+
+                validMoves.forEach(m => {
+                    ctx.beginPath();
+                    ctx.arc((m.c + 0.5) * tileSize, (m.r + 0.5) * tileSize, tileSize * 0.15, 0, Math.PI * 2);
+                    ctx.fillStyle = activePower === 'teleport' ? 'rgba(255, 0, 255, 0.7)' : 'rgba(0, 242, 254, 0.6)';
+                    ctx.fill();
+                });
+            }
+
+            particles.forEach((p, idx) => {
+                p.update(); p.draw();
+                if (p.alpha <= 0) particles.splice(idx, 1);
+            });
+
+            pieceObjects.forEach(p => {
+                p.update(); p.draw();
+            });
+        }
+
+        function resetGame() {
+            initBoard();
+        }
+
+        initBoard();
+        render();
+    </script>
+</body>
+</html>

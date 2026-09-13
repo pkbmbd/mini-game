@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Blade: Dungeon Slayer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            touch-action: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #050510;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            updateTouchLayout();
+        }
+
+        // Game State
+        let score = 0;
+        let level = 1;
+        let gameOver = false;
+        let gameStarted = false;
+        let touchEnabled = true;
+
+        // Key Input State
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'KeyJ' || e.code === 'Space') playerAttack();
+            if (e.code === 'KeyK' || e.code === 'ShiftLeft') playerDash();
+        });
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // UI Touch Controls
+        let joystick = { baseX: 0, baseY: 0, currX: 0, currY: 0, active: false, id: null };
+        let attackBtn = { x: 0, y: 0, radius: 40, active: false, id: null };
+        let dashBtn = { x: 0, y: 0, radius: 30, active: false, id: null };
+        let toggleBtn = { x: 0, y: 0, w: 140, h: 40 };
+
+        function updateTouchLayout() {
+            joystick.baseX = 90;
+            joystick.baseY = canvas.height - 90;
+            joystick.currX = joystick.baseX;
+            joystick.currY = joystick.baseY;
+
+            attackBtn.x = canvas.width - 80;
+            attackBtn.y = canvas.height - 70;
+
+            dashBtn.x = canvas.width - 150;
+            dashBtn.y = canvas.height - 50;
+
+            toggleBtn.x = canvas.width - 160;
+            toggleBtn.y = 20;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Web Audio Synthesizer
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.1) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        // Touch Handlers
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+        canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            if (clickX >= toggleBtn.x && clickX <= toggleBtn.x + toggleBtn.w &&
+                clickY >= toggleBtn.y && clickY <= toggleBtn.y + toggleBtn.h) {
+                touchEnabled = !touchEnabled;
+                return;
+            }
+
+            if (!gameStarted || gameOver) {
+                resetGame();
+                gameStarted = true;
+            }
+        });
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            for (let touch of e.changedTouches) {
+                const tx = touch.clientX;
+                const ty = touch.clientY;
+
+                if (tx >= toggleBtn.x && tx <= toggleBtn.x + toggleBtn.w &&
+                    ty >= toggleBtn.y && ty <= toggleBtn.y + toggleBtn.h) {
+                    touchEnabled = !touchEnabled;
+                    continue;
+                }
+
+                if (!gameStarted || gameOver) {
+                    resetGame();
+                    gameStarted = true;
+                    continue;
+                }
+
+                if (!touchEnabled) continue;
+
+                const distAttack = Math.hypot(tx - attackBtn.x, ty - attackBtn.y);
+                if (distAttack < attackBtn.radius + 15 && attackBtn.id === null) {
+                    attackBtn.id = touch.identifier;
+                    playerAttack();
+                    continue;
+                }
+
+                const distDash = Math.hypot(tx - dashBtn.x, ty - dashBtn.y);
+                if (distDash < dashBtn.radius + 15 && dashBtn.id === null) {
+                    dashBtn.id = touch.identifier;
+                    playerDash();
+                    continue;
+                }
+
+                if (tx < canvas.width / 2 && joystick.id === null) {
+                    joystick.active = true;
+                    joystick.id = touch.identifier;
+                    joystick.currX = tx;
+                    joystick.currY = ty;
+                }
+            }
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!touchEnabled || !gameStarted || gameOver) return;
+
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === joystick.id) {
+                    const maxDist = 55;
+                    const dx = touch.clientX - joystick.baseX;
+                    const dy = touch.clientY - joystick.baseY;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist > maxDist) {
+                        const angle = Math.atan2(dy, dx);
+                        joystick.currX = joystick.baseX + Math.cos(angle) * maxDist;
+                        joystick.currY = joystick.baseY + Math.sin(angle) * maxDist;
+                    } else {
+                        joystick.currX = touch.clientX;
+                        joystick.currY = touch.clientY;
+                    }
+                }
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === joystick.id) {
+                    joystick.active = false;
+                    joystick.id = null;
+                    joystick.currX = joystick.baseX;
+                    joystick.currY = joystick.baseY;
+                }
+                if (touch.identifier === attackBtn.id) attackBtn.id = null;
+                if (touch.identifier === dashBtn.id) dashBtn.id = null;
+            }
+        }
+
+        // Hero Player
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.radius = 18;
+                this.speed = 5;
+                this.hp = 100;
+                this.maxHp = 100;
+                this.facingAngle = 0;
+                this.isAttacking = false;
+                this.attackTimer = 0;
+                this.dashCooldown = 0;
+                this.isDashing = false;
+                this.dashTimer = 0;
+                this.color = '#00f2fe';
+            }
+
+            draw() {
+                // Dash Shadow Effect
+                if (this.isDashing) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius + 4, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 242, 254, 0.3)';
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // Player Body
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Direction Indicator Dot
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(
+                    this.x + Math.cos(this.facingAngle) * 12,
+                    this.y + Math.sin(this.facingAngle) * 12,
+                    4, 0, Math.PI * 2
+                );
+                ctx.fill();
+                ctx.restore();
+
+                // Sword Slash Animation
+                if (this.isAttacking) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 48, this.facingAngle - 1, this.facingAngle + 1);
+                    ctx.strokeStyle = '#ff0055';
+                    ctx.lineWidth = 6;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#ff0055';
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            update() {
+                let dx = 0;
+                let dy = 0;
+
+                if (keys['KeyA'] || keys['ArrowLeft']) dx -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
+                if (keys['KeyW'] || keys['ArrowUp']) dy -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) dy += 1;
+
+                if (touchEnabled && joystick.active) {
+                    dx = (joystick.currX - joystick.baseX) / 55;
+                    dy = (joystick.currY - joystick.baseY) / 55;
+                }
+
+                if (dx !== 0 || dy !== 0) {
+                    this.facingAngle = Math.atan2(dy, dx);
+                    let currentSpeed = this.isDashing ? this.speed * 2.8 : this.speed;
+                    this.x += Math.cos(this.facingAngle) * currentSpeed;
+                    this.y += Math.sin(this.facingAngle) * currentSpeed;
+                }
+
+                // Boundary Limits
+                this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y));
+
+                // Timers
+                if (this.attackTimer > 0) {
+                    this.attackTimer--;
+                    if (this.attackTimer === 0) this.isAttacking = false;
+                }
+
+                if (this.dashTimer > 0) {
+                    this.dashTimer--;
+                    if (this.dashTimer === 0) this.isDashing = false;
+                }
+
+                if (this.dashCooldown > 0) this.dashCooldown--;
+            }
+        }
+
+        // Enemy Base Class
+        class Enemy {
+            constructor(x, y, type = 'CYBORG') {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.radius = type === 'BOSS' ? 32 : 16;
+                this.speed = type === 'BOSS' ? 1.8 : 2.5;
+                this.hp = type === 'BOSS' ? 150 : 30;
+                this.maxHp = this.hp;
+                this.color = type === 'BOSS' ? '#ff0055' : '#ffbd03';
+            }
+
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Enemy HP Bar
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillRect(this.x - 20, this.y - this.radius - 12, 40, 5);
+                ctx.fillStyle = '#00ff88';
+                ctx.fillRect(this.x - 20, this.y - this.radius - 12, (this.hp / this.maxHp) * 40, 5);
+                ctx.restore();
+            }
+
+            update() {
+                const angle = Math.atan2(player.y - this.y, player.x - this.x);
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+            }
+        }
+
+        // Treasure Chest
+        class Chest {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 24;
+                this.opened = false;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#00ff88';
+                ctx.fillStyle = this.opened ? 'rgba(0, 255, 136, 0.3)' : '#00ff88';
+                ctx.fillRect(this.x - 12, this.y - 12, this.size, this.size);
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeRect(this.x - 12, this.y - 12, this.size, this.size);
+                ctx.restore();
+            }
+        }
+
+        // Particle FX
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3 + 1;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = (Math.random() - 0.5) * 6;
+                this.alpha = 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.03;
+            }
+        }
+
+        let player = new Player();
+        let enemies = [];
+        let chests = [];
+        let particles = [];
+
+        function spawnDungeonRoom() {
+            enemies = [];
+            chests = [];
+            const count = 3 + level * 2;
+            for (let i = 0; i < count; i++) {
+                let ex = Math.random() * (canvas.width - 100) + 50;
+                let ey = Math.random() * (canvas.height - 100) + 50;
+                enemies.push(new Enemy(ex, ey, (i === 0 && level % 3 === 0) ? 'BOSS' : 'CYBORG'));
+            }
+            chests.push(new Chest(Math.random() * (canvas.width - 120) + 60, Math.random() * (canvas.height - 120) + 60));
+        }
+
+        function playerAttack() {
+            if (!gameStarted || gameOver || player.isAttacking) return;
+            player.isAttacking = true;
+            player.attackTimer = 12; // 12 Frames
+            playSound(700, 'sawtooth', 0.1);
+
+            // Cek Hit Detection ke Musuh
+            enemies.forEach((enemy, index) => {
+                const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+                const angleToEnemy = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+                const angleDiff = Math.abs(angleToEnemy - player.facingAngle);
+
+                if (dist < 55 && (angleDiff < 1.2 || angleDiff > 5.0)) {
+                    enemy.hp -= 20;
+                    createParticles(enemy.x, enemy.y, '#ff0055');
+                    playSound(300, 'square', 0.08);
+
+                    if (enemy.hp <= 0) {
+                        score += enemy.type === 'BOSS' ? 100 : 25;
+                        enemies.splice(index, 1);
+                    }
+                }
+            });
+        }
+
+        function playerDash() {
+            if (!gameStarted || gameOver || player.dashCooldown > 0) return;
+            player.isDashing = true;
+            player.dashTimer = 10;
+            player.dashCooldown = 45;
+            playSound(900, 'sine', 0.08);
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) particles.push(new Particle(x, y, color));
+        }
+
+        function resetGame() {
+            player = new Player();
+            score = 0;
+            level = 1;
+            gameOver = false;
+            spawnDungeonRoom();
+        }
+
+        function drawTouchUI() {
+            // Toggle Button UI
+            ctx.save();
+            ctx.fillStyle = touchEnabled ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255, 0, 85, 0.2)';
+            ctx.strokeStyle = touchEnabled ? '#00f2fe' : '#ff0055';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(toggleBtn.x, toggleBtn.y, toggleBtn.w, toggleBtn.h, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`TOUCH: ${touchEnabled ? 'ON 🟢' : 'OFF 🔴'}`, toggleBtn.x + toggleBtn.w / 2, toggleBtn.y + toggleBtn.h / 2);
+            ctx.restore();
+
+            if (!touchEnabled) return;
+
+            // Joystick Outer & Inner Knob
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(joystick.baseX, joystick.baseY, 55, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeStyle = 'rgba(0, 242, 254, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(joystick.currX, joystick.currY, 22, 0, Math.PI * 2);
+            ctx.fillStyle = joystick.active ? 'rgba(0, 242, 254, 0.6)' : 'rgba(0, 242, 254, 0.3)';
+            ctx.fill();
+            ctx.restore();
+
+            // Attack Button (⚔️)
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(attackBtn.x, attackBtn.y, attackBtn.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 0, 85, 0.4)';
+            ctx.strokeStyle = '#ff0055';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚔️ SLICE', attackBtn.x, attackBtn.y);
+            ctx.restore();
+
+            // Dash Button (⚡)
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(dashBtn.x, dashBtn.y, dashBtn.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.dashCooldown > 0 ? 'rgba(100, 100, 100, 0.4)' : 'rgba(255, 189, 3, 0.4)';
+            ctx.strokeStyle = '#ffbd03';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚡ DASH', dashBtn.x, dashBtn.y);
+            ctx.restore();
+        }
+
+        // Loop Game Utama
+        function animate() {
+            requestAnimationFrame(animate);
+
+            ctx.fillStyle = '#050510';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Layar Start
+            if (!gameStarted) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#00f2fe';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00f2fe';
+                ctx.font = 'bold 36px sans-serif';
+                ctx.fillText('NEON BLADE: DUNGEON SLAYER', canvas.width / 2, canvas.height / 2 - 30);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.font = '18px sans-serif';
+                ctx.fillText('Tap Layar / Klik untuk Bertarung', canvas.width / 2, canvas.height / 2 + 30);
+                ctx.font = '14px sans-serif';
+                ctx.fillText('Kontrol: W,A,S,D / Joystick | J / Spasi = Tebas | K / Shift = Dash', canvas.width / 2, canvas.height / 2 + 70);
+                ctx.restore();
+
+                drawTouchUI();
+                return;
+            }
+
+            // Layar Game Over
+            if (gameOver) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ff0055';
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#ff0055';
+                ctx.font = 'bold 48px sans-serif';
+                ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.font = '22px sans-serif';
+                ctx.fillText(`Skor: ${score} | Level Dungeon: ${level}`, canvas.width / 2, canvas.height / 2 + 10);
+                ctx.font = '16px sans-serif';
+                ctx.fillText('Tap Layar / Klik untuk Main Lagi', canvas.width / 2, canvas.height / 2 + 60);
+                ctx.restore();
+
+                drawTouchUI();
+                return;
+            }
+
+            player.update();
+            player.draw();
+
+            // Render Chests
+            chests.forEach(chest => {
+                chest.draw();
+                if (!chest.opened) {
+                    const dist = Math.hypot(player.x - chest.x, player.y - chest.y);
+                    if (dist - player.radius < 12) {
+                        chest.opened = true;
+                        score += 50;
+                        player.hp = Math.min(player.maxHp, player.hp + 25);
+                        playSound(800, 'sine', 0.2);
+                        createParticles(chest.x, chest.y, '#00ff88');
+                    }
+                }
+            });
+
+            // Update & Render Particles
+            particles.forEach((p, index) => {
+                if (p.alpha <= 0) particles.splice(index, 1);
+                else { p.update(); p.draw(); }
+            });
+
+            // Update & Render Enemies
+            enemies.forEach((enemy, eIndex) => {
+                enemy.update();
+                enemy.draw();
+
+                // Cek Kontak Musuh dengan Player
+                const distPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                if (distPlayer - enemy.radius - player.radius < 1 && !player.isDashing) {
+                    player.hp -= 0.5;
+                    playSound(150, 'sawtooth', 0.05);
+                    if (player.hp <= 0) {
+                        gameOver = true;
+                    }
+                }
+            });
+
+            // Cek Clear Room untuk Lanjut Level
+            if (enemies.length === 0) {
+                level++;
+                score += 100;
+                playSound(1000, 'triangle', 0.3);
+                spawnDungeonRoom();
+            }
+
+            // Render HUD Bar (HP, Level & Score)
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px monospace';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f2fe';
+            ctx.fillText(`LEVEL: ${level}  SCORE: ${score}`, 30, 45);
+
+            // Health Bar HUD
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fillRect(30, 60, 180, 12);
+            ctx.fillStyle = player.hp > 30 ? '#00f2fe' : '#ff0055';
+            ctx.fillRect(30, 60, (player.hp / player.maxHp) * 180, 12);
+            ctx.restore();
+
+            drawTouchUI();
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

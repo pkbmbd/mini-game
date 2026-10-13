@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Maze Runner - Dynamic Environment & Themes</title>
+    <style>
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0;
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        #webgl-container { width: 100%; height: 100%; display: block; cursor: grab; }
+        #webgl-container:active { cursor: grabbing; }
+
+        /* UI Info Kiri Atas */
+        #ui-overlay {
+            position: absolute; top: 20px; left: 20px;
+            color: #ffffff; pointer-events: none; z-index: 10;
+        }
+        .card {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px; border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+        h1 { margin: 0 0 6px 0; font-size: 20px; color: #38bdf8; }
+        p { margin: 3px 0; font-size: 13px; color: #cbd5e1; }
+        .highlight { font-weight: bold; color: #facc15; }
+        .record { color: #4ade80; font-weight: bold; }
+        .theme-tag { color: #ec4899; font-weight: bold; }
+
+        /* Inventory Power-Up Bawah */
+        #inventory {
+            position: absolute; bottom: 20px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: 12px; z-index: 10;
+        }
+        .slot {
+            width: 85px; height: 75px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            color: #fff; font-size: 11px; text-align: center;
+            transition: all 0.2s;
+        }
+        .slot-count { font-size: 16px; font-weight: bold; color: #facc15; margin-top: 2px; }
+
+        #teleport-prompt {
+            position: absolute; bottom: 110px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(236, 72, 153, 0.9);
+            color: #fff; padding: 10px 20px; border-radius: 20px;
+            font-size: 13px; font-weight: bold; display: none;
+            box-shadow: 0 0 20px rgba(236, 72, 153, 0.6); z-index: 20;
+            text-align: center;
+        }
+
+        #minimap-container {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 2px solid rgba(56, 189, 248, 0.6);
+            border-radius: 12px; padding: 8px; z-index: 10;
+        }
+        #minimap-title { color: #38bdf8; font-size: 11px; font-weight: bold; margin-bottom: 6px; text-align: center; }
+        #minimap-canvas { border-radius: 6px; background-color: #090d16; display: block; }
+
+        #start-modal {
+            position: absolute; top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(6px);
+            display: flex; justify-content: center; align-items: center; z-index: 50;
+        }
+        .modal-box {
+            background: rgba(30, 41, 59, 0.95);
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            border-radius: 20px; padding: 32px 48px; text-align: center;
+            max-width: 440px; width: 90%; color: #fff;
+        }
+        .modal-box h2 { margin: 0 0 12px 0; color: #38bdf8; font-size: 28px; }
+        .modal-box p { font-size: 14px; color: #cbd5e1; margin-bottom: 20px; line-height: 1.5; }
+        .btn-start {
+            background: #0284c7; color: #ffffff; border: none;
+            padding: 14px 36px; font-size: 18px; font-weight: bold;
+            border-radius: 12px; cursor: pointer; transition: background 0.2s;
+        }
+        .btn-start:hover { background: #0369a1; }
+
+        #toast {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(16, 185, 129, 0.95); color: #ffffff;
+            padding: 24px 48px; border-radius: 16px;
+            font-size: 30px; font-weight: bold; display: none; z-index: 30;
+            box-shadow: 0 0 50px rgba(16, 185, 129, 0.8);
+            text-align: center;
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="webgl-container"></div>
+    
+    <div id="ui-overlay" class="card">
+        <h1>MAZE RUNNER 3D</h1>
+        <p>Level: <span id="level-val" class="highlight">1</span></p>
+        <p>Tema Lingkungan: <span id="theme-val" class="theme-tag">Semak Taman</span></p>
+        <p>Ukuran Grid: <span id="size-val" class="highlight">15 x 15</span></p>
+        <p>Labirin Terpecahkan: <span id="cleared-val" class="record">0</span></p>
+        <p>Rekor Terjauh: <span id="high-val" class="record">Level 1</span></p>
+        <p style="margin-top:8px; font-size:11px; color:#cbd5e1;">Karakter: <b>W, A, S, D</b> / <b>Panah</b></p>
+        <p style="font-size:11px; color:#38bdf8;">Kamera: <b>I, J, K, L</b> / <b>Drag Mouse</b></p>
+    </div>
+
+    <div id="teleport-prompt">
+        📍 MODE TELEPORTASI: Gerakkan lokasi tujuan, tekan [Q] lagi!<br>
+        <span id="teleport-cost-text" style="color:#facc15; font-size:11px;">Biaya: 1 Stok</span>
+    </div>
+
+    <div id="inventory">
+        <div class="slot" id="slot-jump">
+            <span>🚀 Dbl-Jump (-1)</span>
+            <span class="slot-count" id="cnt-jump">0</span>
+            <span style="font-size:9px; color:#94a3b8;">[SPACE]</span>
+        </div>
+        <div class="slot" id="slot-ghost">
+            <span>👻 Tembus 3s</span>
+            <span class="slot-count" id="cnt-ghost">0</span>
+            <span style="font-size:9px; color:#94a3b8;">[Tombol E]</span>
+        </div>
+        <div class="slot" id="slot-teleport">
+            <span>⚡ Teleport</span>
+            <span class="slot-count" id="cnt-teleport">0</span>
+            <span style="font-size:9px; color:#94a3b8;">[Tombol Q]</span>
+        </div>
+    </div>
+
+    <div id="minimap-container">
+        <div id="minimap-title">MINIMAP (FOG OF WAR)</div>
+        <canvas id="minimap-canvas" width="160" height="160"></canvas>
+    </div>
+
+    <div id="start-modal">
+        <div class="modal-box">
+            <h2 id="modal-title">LEVEL 1</h2>
+            <p id="modal-desc">Lingkungan di luar labirin kini ikut berganti secara realistis!</p>
+            <button class="btn-start" onclick="startLevelGame()">MULAI LEVEL</button>
+        </div>
+    </div>
+
+    <div id="toast">🏁 LABIRIN TERPECAHKAN!</div>
+
+    <script>
+        let currentLevel = 1;
+        let totalCleared = parseInt(localStorage.getItem('maze_cleared') || '0');
+        let highScore = parseInt(localStorage.getItem('maze_highscore') || '1');
+        let gameActive = false;
+
+        let powerups = { jump: 0, ghost: 0, teleport: 0 };
+        let isGhostActive = false;
+        let ghostTimer = null;
+
+        let isTeleportTargeting = false;
+        let targetGridPos = { r: 1, c: 1 };
+        let targetMesh = null;
+
+        // DATA METADATA TEMA LINGKUNGAN
+        const THEMES = [
+            { name: "Semak Taman (Hedge Garden)", skyColor: 0x38bdf8, floorColor: 0x15803d, wallColor: 0x16a34a, fogColor: 0xbae6fd },
+            { name: "Kastil Batu Kuno (Ancient Fortress)", skyColor: 0xf97316, floorColor: 0x334155, wallColor: 0x64748b, fogColor: 0xfed7aa },
+            { name: "Benteng Es (Frozen Crystal)", skyColor: 0xa5f3fc, floorColor: 0xe0f2fe, wallColor: 0x0284c7, fogColor: 0xcff4fc },
+            { name: "Lahar Vulkanik (Lava Obsidian)", skyColor: 0x450a0a, floorColor: 0x18181b, wallColor: 0xd97706, fogColor: 0x7f1d1d },
+            { name: "Cyberpunk Neon (Sci-Fi Grid)", skyColor: 0x0f172a, floorColor: 0x020617, wallColor: 0xa855f7, fogColor: 0x3b0764 }
+        ];
+
+        function updateUI() {
+            const themeIndex = (currentLevel - 1) % THEMES.length;
+            document.getElementById('level-val').innerText = currentLevel;
+            document.getElementById('theme-val').innerText = THEMES[themeIndex].name;
+            document.getElementById('cleared-val').innerText = totalCleared;
+            document.getElementById('high-val').innerText = `Level ${highScore}`;
+            document.getElementById('cnt-jump').innerText = powerups.jump;
+            document.getElementById('cnt-ghost').innerText = powerups.ghost;
+            document.getElementById('cnt-teleport').innerText = powerups.teleport;
+        }
+
+        let grid = [], exploredMap = [];
+        let mazeCols = 15, mazeRows = 15;
+        let playerGridPos = { r: 1, c: 1 }, goalGridPos = { r: 1, c: 1 };
+        let itemEntities = [];
+
+        function generateMaze(level) {
+            mazeCols = 13 + (level * 2);
+            mazeRows = 13 + (level * 2);
+            document.getElementById('size-val').innerText = `${mazeCols} x ${mazeRows}`;
+
+            grid = Array(mazeRows).fill().map(() => Array(mazeCols).fill(1));
+            exploredMap = Array(mazeRows).fill().map(() => Array(mazeCols).fill(false));
+
+            function carvePassagesFrom(cx, cy) {
+                grid[cy][cx] = 0;
+                const directions = [[0, -2], [2, 0], [0, 2], [-2, 0]].sort(() => Math.random() - 0.5);
+                for (let [dx, dy] of directions) {
+                    const nx = cx + dx, ny = cy + dy;
+                    if (nx > 0 && nx < mazeCols - 1 && ny > 0 && ny < mazeRows - 1 && grid[ny][nx] === 1) {
+                        grid[cy + dy / 2][cx + dx / 2] = 0;
+                        carvePassagesFrom(nx, ny);
+                    }
+                }
+            }
+
+            carvePassagesFrom(1, 1);
+            playerGridPos = { r: 1, c: 1 };
+            goalGridPos = { r: mazeRows - 2, c: mazeCols - 2 };
+            grid[playerGridPos.r][playerGridPos.c] = 2;
+            grid[goalGridPos.r][goalGridPos.c] = 3;
+
+            revealFogOfWar(playerGridPos.r, playerGridPos.c);
+        }
+
+        function revealFogOfWar(r, c) {
+            const radius = 2;
+            for (let dr = -radius; dr <= radius; dr++) {
+                for (let dc = -radius; dc <= radius; dc++) {
+                    const nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < mazeRows && nc >= 0 && nc < mazeCols) {
+                        exploredMap[nr][nc] = true;
+                    }
+                }
+            }
+        }
+
+        const miniCanvas = document.getElementById('minimap-canvas');
+        const miniCtx = miniCanvas.getContext('2d');
+
+        function drawMinimap() {
+            miniCtx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
+            const cellW = miniCanvas.width / mazeCols;
+            const cellH = miniCanvas.height / mazeRows;
+            const themeIndex = (currentLevel - 1) % THEMES.length;
+            const wallHex = '#' + THEMES[themeIndex].wallColor.toString(16).padStart(6, '0');
+
+            for (let r = 0; r < mazeRows; r++) {
+                for (let c = 0; c < mazeCols; c++) {
+                    if (exploredMap[r][c]) {
+                        miniCtx.fillStyle = grid[r][c] === 1 ? wallHex : '#0f172a';
+                    } else {
+                        miniCtx.fillStyle = '#020617';
+                    }
+                    miniCtx.fillRect(c * cellW, r * cellH, cellW, cellH);
+                }
+            }
+
+            miniCtx.fillStyle = '#22c55e';
+            miniCtx.beginPath();
+            miniCtx.arc(goalGridPos.c * cellW + cellW / 2, goalGridPos.r * cellH + cellH / 2, Math.max(cellW, 3), 0, Math.PI * 2);
+            miniCtx.fill();
+
+            miniCtx.fillStyle = '#eab308';
+            miniCtx.beginPath();
+            miniCtx.arc(playerGridPos.c * cellW + cellW / 2, playerGridPos.r * cellH + cellH / 2, Math.max(cellW, 3), 0, Math.PI * 2);
+            miniCtx.fill();
+        }
+
+        function createProceduralTextures() {
+            const leafCanvas = document.createElement('canvas');
+            leafCanvas.width = 256; leafCanvas.height = 256;
+            const ctxL = leafCanvas.getContext('2d');
+            ctxL.fillStyle = '#14532d'; ctxL.fillRect(0,0,256,256);
+            for(let i=0; i<800; i++){
+                ctxL.fillStyle = ['#15803d','#166534','#22c55e'][Math.floor(Math.random()*3)];
+                ctxL.beginPath(); ctxL.arc(Math.random()*256, Math.random()*256, 3+Math.random()*5, 0, Math.PI*2); ctxL.fill();
+            }
+            const leafTex = new THREE.CanvasTexture(leafCanvas);
+            leafTex.wrapS = THREE.RepeatWrapping; leafTex.wrapT = THREE.RepeatWrapping;
+
+            const stoneCanvas = document.createElement('canvas');
+            stoneCanvas.width = 256; stoneCanvas.height = 256;
+            const ctxS = stoneCanvas.getContext('2d');
+            ctxS.fillStyle = '#475569'; ctxS.fillRect(0,0,256,256);
+            ctxS.strokeStyle = '#1e293b'; ctxS.lineWidth = 4;
+            for(let y=0; y<256; y+=32){
+                ctxS.beginPath(); ctxS.moveTo(0,y); ctxS.lineTo(256,y); ctxS.stroke();
+                const offset = (y/32)%2 === 0 ? 0 : 32;
+                for(let x=offset; x<256; x+=64){
+                    ctxS.beginPath(); ctxS.moveTo(x,y); ctxS.lineTo(x,y+32); ctxS.stroke();
+                }
+            }
+            const stoneTex = new THREE.CanvasTexture(stoneCanvas);
+            stoneTex.wrapS = THREE.RepeatWrapping; stoneTex.wrapT = THREE.RepeatWrapping;
+
+            return { leaf: leafTex, stone: stoneTex };
+        }
+
+        const CELL_SIZE = 2.5;
+        let scene, camera, renderer, dirLight, hemiLight;
+        let playerGroup, leftLeg, rightLeg, leftArm, rightArm;
+        let playerMaterials = [];
+        let wallMaterials = [];
+        let finishGroup;
+        let walls = [], levelObjects = [];
+        let isTransitioning = false;
+        const keys = {};
+
+        let playerVelocityY = 0;
+        let jumpCount = 0; 
+        const GRAVITY = -25;
+        const WALL_HEIGHT = 3.0;
+        let runAnimTime = 0;
+
+        let cameraAngleX = 0;
+        let cameraAngleY = Math.PI / 4;
+        let cameraDistance = 14;
+        let isMouseDown = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let procTextures = null;
+
+        function createHumanCharacter() {
+            playerGroup = new THREE.Group();
+
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.5 });
+            const shirtMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 });
+            const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+            playerMaterials = [skinMat, shirtMat, pantsMat];
+
+            const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
+            const head = new THREE.Mesh(headGeo, skinMat);
+            head.position.y = 1.05;
+            head.castShadow = true;
+            playerGroup.add(head);
+
+            const torsoGeo = new THREE.BoxGeometry(0.35, 0.45, 0.25);
+            const torso = new THREE.Mesh(torsoGeo, shirtMat);
+            torso.position.y = 0.7;
+            torso.castShadow = true;
+            playerGroup.add(torso);
+
+            const legGeo = new THREE.BoxGeometry(0.12, 0.45, 0.12);
+            legGeo.translate(0, -0.22, 0);
+            leftLeg = new THREE.Mesh(legGeo, pantsMat);
+            leftLeg.position.set(-0.1, 0.45, 0);
+            leftLeg.castShadow = true;
+            playerGroup.add(leftLeg);
+
+            rightLeg = new THREE.Mesh(legGeo, pantsMat);
+            rightLeg.position.set(0.1, 0.45, 0);
+            rightLeg.castShadow = true;
+            playerGroup.add(rightLeg);
+
+            const armGeo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
+            armGeo.translate(0, -0.2, 0);
+            leftArm = new THREE.Mesh(armGeo, skinMat);
+            leftArm.position.set(-0.23, 0.88, 0);
+            leftArm.castShadow = true;
+            playerGroup.add(leftArm);
+
+            rightArm = new THREE.Mesh(armGeo, skinMat);
+            rightArm.position.set(0.23, 0.88, 0);
+            rightArm.castShadow = true;
+            playerGroup.add(rightArm);
+
+            return playerGroup;
+        }
+
+        // GENERATOR DEKORASI LINGKUNGAN LUAR LABIRIN
+        function buildOutdoorEnvironment(themeType, mazeWidth, mazeHeight) {
+            const margin = 120;
+            const halfW = (mazeWidth * CELL_SIZE) / 2 + 15;
+            const halfH = (mazeHeight * CELL_SIZE) / 2 + 15;
+
+            // 1. TAMAN SEMAK (Pohon Pinus)
+            if (themeType === 0) {
+                const treeGeo = new THREE.ConeGeometry(2, 6, 8);
+                const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2, 8);
+                const treeMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 });
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+
+                for (let i = 0; i < 60; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const dist = halfW + Math.random() * margin;
+                    const x = Math.cos(ang) * dist;
+                    const z = Math.sin(ang) * dist;
+
+                    const treeGroup = new THREE.Group();
+                    const leaves = new THREE.Mesh(treeGeo, treeMat);
+                    leaves.position.y = 4;
+                    leaves.castShadow = true;
+                    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                    trunk.position.y = 1;
+
+                    treeGroup.add(leaves); treeGroup.add(trunk);
+                    treeGroup.position.set(x, 0, z);
+                    scene.add(treeGroup);
+                    levelObjects.push(treeGroup);
+                }
+            }
+            // 2. KASTIL KUNO (Pilar & Menara Pengawas Batu)
+            else if (themeType === 1) {
+                const towerGeo = new THREE.CylinderGeometry(2, 2.5, 8, 12);
+                const towerMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.7 });
+
+                for (let i = 0; i < 30; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const dist = halfW + Math.random() * margin;
+                    const x = Math.cos(ang) * dist;
+                    const z = Math.sin(ang) * dist;
+
+                    const tower = new THREE.Mesh(towerGeo, towerMat);
+                    tower.position.set(x, 4, z);
+                    tower.castShadow = true;
+                    scene.add(tower);
+                    levelObjects.push(tower);
+                }
+            }
+            // 3. BENTENG ES (Pilar Kristal Es Raksasa)
+            else if (themeType === 2) {
+                const iceGeo = new THREE.OctahedronGeometry(3, 0);
+                const iceMat = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transmission: 0.8, roughness: 0.1 });
+
+                for (let i = 0; i < 45; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const dist = halfW + Math.random() * margin;
+                    const x = Math.cos(ang) * dist;
+                    const z = Math.sin(ang) * dist;
+
+                    const ice = new THREE.Mesh(iceGeo, iceMat);
+                    ice.position.set(x, 2 + Math.random() * 3, z);
+                    ice.rotation.set(Math.random(), Math.random(), Math.random());
+                    scene.add(ice);
+                    levelObjects.push(ice);
+                }
+            }
+            // 4. VULKANIK (Bongkahan Magma & Lahar)
+            else if (themeType === 3) {
+                const lavaGeo = new THREE.DodecahedronGeometry(2.5, 1);
+                const lavaMat = new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0xb45309, emissiveIntensity: 0.7 });
+
+                for (let i = 0; i < 40; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const dist = halfW + Math.random() * margin;
+                    const x = Math.cos(ang) * dist;
+                    const z = Math.sin(ang) * dist;
+
+                    const lava = new THREE.Mesh(lavaGeo, lavaMat);
+                    lava.position.set(x, 1.5, z);
+                    lava.scale.set(1 + Math.random(), 2 + Math.random()*2, 1 + Math.random());
+                    scene.add(lava);
+                    levelObjects.push(lava);
+                }
+            }
+            // 5. CYBERPUNK (Menara Pylon Neon)
+            else if (themeType === 4) {
+                const pylonGeo = new THREE.BoxGeometry(1.5, 12, 1.5);
+                const pylonMat = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.2 });
+                const neonMat = new THREE.MeshBasicMaterial({ color: 0xc084fc });
+
+                for (let i = 0; i < 35; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const dist = halfW + Math.random() * margin;
+                    const x = Math.cos(ang) * dist;
+                    const z = Math.sin(ang) * dist;
+
+                    const pylonGroup = new THREE.Group();
+                    const body = new THREE.Mesh(pylonGeo, pylonMat);
+                    body.position.y = 6;
+                    const cap = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.7), neonMat);
+                    cap.position.y = 12;
+
+                    pylonGroup.add(body); pylonGroup.add(cap);
+                    pylonGroup.position.set(x, 0, z);
+                    scene.add(pylonGroup);
+                    levelObjects.push(pylonGroup);
+                }
+            }
+        }
+
+        function createLevelWallBlock(x, z, themeType) {
+            const wallGroup = new THREE.Group();
+            wallGroup.position.set(x, 0, z);
+
+            let mat;
+
+            if (themeType === 0) { 
+                mat = new THREE.MeshStandardMaterial({ map: procTextures.leaf, roughness: 0.8 });
+                const core = new THREE.Mesh(new THREE.CylinderGeometry(CELL_SIZE*0.55, CELL_SIZE*0.55, WALL_HEIGHT, 12), mat);
+                core.position.y = WALL_HEIGHT / 2;
+                wallGroup.add(core);
+
+                const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8), mat);
+                bush.position.set(0, WALL_HEIGHT, 0);
+                wallGroup.add(bush);
+            } 
+            else if (themeType === 1) { 
+                mat = new THREE.MeshStandardMaterial({ map: procTextures.stone, roughness: 0.6 });
+                const mainWall = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE*0.95, WALL_HEIGHT, CELL_SIZE*0.95), mat);
+                mainWall.position.y = WALL_HEIGHT / 2;
+                wallGroup.add(mainWall);
+
+                const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), mat);
+                pillar.position.set(0, WALL_HEIGHT + 0.2, 0);
+                wallGroup.add(pillar);
+            } 
+            else if (themeType === 2) { 
+                mat = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transmission: 0.6, opacity: 0.85, transparent: true, roughness: 0.1 });
+                const mainIce = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE*0.9, WALL_HEIGHT, CELL_SIZE*0.9), mat);
+                mainIce.position.y = WALL_HEIGHT / 2;
+                wallGroup.add(mainIce);
+
+                const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), mat);
+                crystal.position.set(0, WALL_HEIGHT + 0.3, 0);
+                wallGroup.add(crystal);
+            } 
+            else if (themeType === 3) { 
+                mat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
+                const baseRock = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE*0.95, WALL_HEIGHT, CELL_SIZE*0.95), mat);
+                baseRock.position.y = WALL_HEIGHT / 2;
+                wallGroup.add(baseRock);
+
+                const lavaMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xd97706, emissiveIntensity: 0.8 });
+                const lavaOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), lavaMat);
+                lavaOrb.position.set(0, WALL_HEIGHT + 0.3, 0);
+                wallGroup.add(lavaOrb);
+            } 
+            else { 
+                mat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
+                const sciWall = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE*0.9, WALL_HEIGHT, CELL_SIZE*0.9), mat);
+                sciWall.position.y = WALL_HEIGHT / 2;
+                wallGroup.add(sciWall);
+
+                const neonMat = new THREE.MeshBasicMaterial({ color: 0xc084fc });
+                const neonFrame = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE*0.92, 0.1, CELL_SIZE*0.92), neonMat);
+                neonFrame.position.set(0, WALL_HEIGHT * 0.7, 0);
+                wallGroup.add(neonFrame);
+            }
+
+            wallMaterials.push(mat);
+
+            wallGroup.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            scene.add(wallGroup);
+            levelObjects.push(wallGroup);
+        }
+
+        function createFinishLineGate(x, z) {
+            finishGroup = new THREE.Group();
+            finishGroup.position.set(x, 0, z);
+
+            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.2, 16);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+
+            const leftPole = new THREE.Mesh(poleGeo, poleMat);
+            leftPole.position.set(-1.0, 1.6, 0);
+            finishGroup.add(leftPole);
+
+            const rightPole = new THREE.Mesh(poleGeo, poleMat);
+            rightPole.position.set(1.0, 1.6, 0);
+            finishGroup.add(rightPole);
+
+            const bannerGeo = new THREE.PlaneGeometry(2.0, 0.8);
+            const canvasBanner = document.createElement('canvas');
+            canvasBanner.width = 128; canvasBanner.height = 64;
+            const ctxB = canvasBanner.getContext('2d');
+            ctxB.fillStyle = '#ffffff'; ctxB.fillRect(0,0,128,64);
+            ctxB.fillStyle = '#000000';
+            for(let i=0; i<8; i++){
+                for(let j=0; j<4; j++){
+                    if((i+j)%2 === 0) ctxB.fillRect(i*16, j*16, 16, 16);
+                }
+            }
+            const bannerTex = new THREE.CanvasTexture(canvasBanner);
+            const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide });
+            const banner = new THREE.Mesh(bannerGeo, bannerMat);
+            banner.position.set(0, 2.7, 0);
+            finishGroup.add(banner);
+
+            const carpetGeo = new THREE.PlaneGeometry(2.2, 2.2);
+            const carpetMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x15803d, emissiveIntensity: 0.6 });
+            const carpet = new THREE.Mesh(carpetGeo, carpetMat);
+            carpet.rotation.x = -Math.PI / 2;
+            carpet.position.y = 0.02;
+            finishGroup.add(carpet);
+
+            const finishLight = new THREE.PointLight(0x22c55e, 3, 8);
+            finishLight.position.set(0, 2, 0);
+            finishGroup.add(finishLight);
+
+            scene.add(finishGroup);
+            levelObjects.push(finishGroup);
+        }
+
+        function initEngine() {
+            const container = document.getElementById('webgl-container');
+
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xfffaed, 1.2);
+            dirLight.position.set(40, 60, 30);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.bias = -0.0005;
+            scene.add(dirLight);
+
+            hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.4);
+            scene.add(hemiLight);
+
+            procTextures = createProceduralTextures();
+
+            const targetGeo = new THREE.RingGeometry(0.3, 0.8, 32);
+            const targetMat = new THREE.MeshBasicMaterial({ color: 0xec4899, side: THREE.DoubleSide });
+            targetMesh = new THREE.Mesh(targetGeo, targetMat);
+            targetMesh.rotation.x = -Math.PI / 2;
+            targetMesh.visible = false;
+            scene.add(targetMesh);
+
+            window.addEventListener('resize', onWindowResize);
+            
+            window.addEventListener('keydown', e => {
+                const key = e.key.toLowerCase();
+                
+                if (isTeleportTargeting) {
+                    if (key === 'w' || key === 'arrowup') targetGridPos.r = Math.max(0, targetGridPos.r - 1);
+                    if (key === 's' || key === 'arrowdown') targetGridPos.r = Math.min(mazeRows - 1, targetGridPos.r + 1);
+                    if (key === 'a' || key === 'arrowleft') targetGridPos.c = Math.max(0, targetGridPos.c - 1);
+                    if (key === 'd' || key === 'arrowright') targetGridPos.c = Math.min(mazeCols - 1, targetGridPos.c + 1);
+                    updateTeleportTargetPosition();
+                } else {
+                    keys[key] = true;
+                }
+
+                if (e.code === 'Space') triggerJump();
+                if (key === 'e') triggerGhost();
+                if (key === 'q') handleTeleportKey();
+            });
+
+            window.addEventListener('keyup', e => {
+                if (!isTeleportTargeting) keys[e.key.toLowerCase()] = false;
+            });
+
+            container.addEventListener('mousedown', e => {
+                isMouseDown = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => isMouseDown = false);
+
+            container.addEventListener('mousemove', e => {
+                if (!isMouseDown) return;
+
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+
+                cameraAngleX -= deltaX * 0.005;
+                cameraAngleY += deltaY * 0.005;
+                cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2.1, cameraAngleY));
+
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            loadLevelScene(currentLevel);
+            animate();
+        }
+
+        function loadLevelScene(lvl) {
+            levelObjects.forEach(obj => scene.remove(obj));
+            levelObjects = [];
+            walls = [];
+            itemEntities = [];
+            wallMaterials = [];
+
+            generateMaze(lvl);
+            updateUI();
+
+            const themeIndex = (lvl - 1) % THEMES.length;
+            const theme = THEMES[themeIndex];
+
+            // UPDATE WAKTU & WARNA LANGIT LINGKUNGAN
+            scene.background = new THREE.Color(theme.skyColor);
+            scene.fog = new THREE.FogExp2(theme.fogColor, 0.012);
+
+            const offsetX = -(mazeCols * CELL_SIZE) / 2 + CELL_SIZE / 2;
+            const offsetZ = -(mazeRows * CELL_SIZE) / 2 + CELL_SIZE / 2;
+
+            // LANTAI UTAMA DENGAN LUAS LINGKUNGAN SANGAT BESAR
+            const floorGeo = new THREE.PlaneGeometry(300, 300);
+            const floorMat = new THREE.MeshStandardMaterial({ color: theme.floorColor, roughness: 0.6, metalness: 0.1 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+            levelObjects.push(floor);
+
+            // TAMBAHKAN DEKORASI LINGKUNGAN DI LUAR LABIRIN
+            buildOutdoorEnvironment(themeIndex, mazeCols, mazeRows);
+
+            for (let r = 0; r < mazeRows; r++) {
+                for (let c = 0; c < mazeCols; c++) {
+                    const cell = grid[r][c];
+                    const posX = offsetX + c * CELL_SIZE;
+                    const posZ = offsetZ + r * CELL_SIZE;
+
+                    if (cell === 1) { 
+                        createLevelWallBlock(posX, posZ, themeIndex);
+                        walls.push({ x: posX, z: posZ, halfSize: CELL_SIZE / 2 });
+                    } else if (cell === 2) {
+                        if (!playerGroup) {
+                            playerGroup = createHumanCharacter();
+                            scene.add(playerGroup);
+                        }
+                        playerGroup.position.set(posX, 0, posZ);
+                    } else if (cell === 3) {
+                        createFinishLineGate(posX, posZ);
+                    } else if (cell === 0 && Math.random() < 0.08) {
+                        spawnPowerupItem(posX, posZ);
+                    }
+                }
+            }
+
+            drawMinimap();
+            isTransitioning = false;
+        }
+
+        function spawnPowerupItem(x, z) {
+            const types = ['jump', 'ghost', 'teleport'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            let color = 0xa855f7;
+            if (type === 'ghost') color = 0x06b6d4;
+            if (type === 'teleport') color = 0xec4899;
+
+            const geo = new THREE.SphereGeometry(0.35, 16, 16);
+            const mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.5 });
+            const item = new THREE.Mesh(geo, mat);
+            item.position.set(x, 0.8, z);
+            item.castShadow = true;
+
+            scene.add(item);
+            levelObjects.push(item);
+            itemEntities.push({ mesh: item, type: type, x: x, z: z });
+        }
+
+        function triggerJump() {
+            if (!gameActive || isTeleportTargeting) return;
+
+            if (jumpCount === 0) {
+                playerVelocityY = 8;
+                jumpCount = 1;
+            } else if (jumpCount === 1 && powerups.jump >= 1) {
+                powerups.jump -= 1;
+                playerVelocityY = 14;
+                jumpCount = 2;
+                updateUI();
+            }
+        }
+
+        function triggerGhost() {
+            if (powerups.ghost > 0 && !isGhostActive && gameActive && !isTeleportTargeting) {
+                powerups.ghost--;
+                isGhostActive = true;
+
+                playerMaterials.forEach(m => {
+                    m.transparent = true;
+                    m.opacity = 0.35;
+                });
+
+                wallMaterials.forEach(m => {
+                    m.transparent = true;
+                    m.opacity = 0.35;
+                });
+
+                updateUI();
+
+                clearTimeout(ghostTimer);
+                ghostTimer = setTimeout(() => {
+                    isGhostActive = false;
+                    playerMaterials.forEach(m => {
+                        m.opacity = 1.0;
+                        m.transparent = false;
+                    });
+                    wallMaterials.forEach(m => {
+                        m.opacity = 1.0;
+                        m.transparent = false;
+                    });
+                    ejectIfInsideWall();
+                }, 3000); 
+            }
+        }
+
+        function handleTeleportKey() {
+            if (!gameActive) return;
+
+            if (!isTeleportTargeting) {
+                if (powerups.teleport <= 0) return;
+                
+                isTeleportTargeting = true;
+                targetGridPos = { r: playerGridPos.r, c: playerGridPos.c };
+                targetMesh.visible = true;
+                document.getElementById('teleport-prompt').style.display = 'block';
+                updateTeleportTargetPosition();
+            } else {
+                const distBlocks = Math.abs(targetGridPos.r - playerGridPos.r) + Math.abs(targetGridPos.c - playerGridPos.c);
+                if (distBlocks === 0) {
+                    cancelTeleportMode();
+                    return;
+                }
+
+                const cost = Math.ceil(distBlocks / 3);
+
+                if (powerups.teleport >= cost) {
+                    powerups.teleport -= cost;
+                    
+                    const offsetX = -(mazeCols * CELL_SIZE) / 2 + CELL_SIZE / 2;
+                    const offsetZ = -(mazeRows * CELL_SIZE) / 2 + CELL_SIZE / 2;
+
+                    playerGroup.position.x = offsetX + targetGridPos.c * CELL_SIZE;
+                    playerGroup.position.z = offsetZ + targetGridPos.r * CELL_SIZE;
+                    playerGroup.position.y = 0;
+
+                    updateUI();
+                    cancelTeleportMode();
+                    ejectIfInsideWall();
+                }
+            }
+        }
+
+        function updateTeleportTargetPosition() {
+            const offsetX = -(mazeCols * CELL_SIZE) / 2 + CELL_SIZE / 2;
+            const offsetZ = -(mazeRows * CELL_SIZE) / 2 + CELL_SIZE / 2;
+
+            const posX = offsetX + targetGridPos.c * CELL_SIZE;
+            const posZ = offsetZ + targetGridPos.r * CELL_SIZE;
+            targetMesh.position.set(posX, 0.1, posZ);
+
+            const distBlocks = Math.abs(targetGridPos.r - playerGridPos.r) + Math.abs(targetGridPos.c - playerGridPos.c);
+            const cost = Math.max(1, Math.ceil(distBlocks / 3));
+
+            const costText = document.getElementById('teleport-cost-text');
+            if (powerups.teleport >= cost) {
+                costText.innerText = `Jarak: ${distBlocks} Blok | Biaya: ${cost} Stok Teleport`;
+                costText.style.color = '#facc15';
+                targetMesh.material.color.setHex(0xec4899);
+            } else {
+                costText.innerText = `Jarak: ${distBlocks} Blok | Stok Tidak Cukup (Butuh ${cost})`;
+                costText.style.color = '#ef4444';
+                targetMesh.material.color.setHex(0xef4444);
+            }
+        }
+
+        function cancelTeleportMode() {
+            isTeleportTargeting = false;
+            targetMesh.visible = false;
+            document.getElementById('teleport-prompt').style.display = 'none';
+        }
+
+        function ejectIfInsideWall() {
+            const offsetX = -(mazeCols * CELL_SIZE) / 2 + CELL_SIZE / 2;
+            const offsetZ = -(mazeRows * CELL_SIZE) / 2 + CELL_SIZE / 2;
+
+            let curC = Math.round((playerGroup.position.x - offsetX) / CELL_SIZE);
+            let curR = Math.round((playerGroup.position.z - offsetZ) / CELL_SIZE);
+
+            curC = Math.max(0, Math.min(mazeCols - 1, curC));
+            curR = Math.max(0, Math.min(mazeRows - 1, curR));
+
+            if (grid[curR][curC] === 1) {
+                let nearestPassage = null;
+                let minDistance = Infinity;
+
+                for (let r = 0; r < mazeRows; r++) {
+                    for (let c = 0; c < mazeCols; c++) {
+                        if (grid[r][c] !== 1) {
+                            let dist = Math.hypot(r - curR, c - curC);
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                nearestPassage = { r: r, c: c };
+                            }
+                        }
+                    }
+                }
+
+                if (nearestPassage) {
+                    playerGroup.position.x = offsetX + nearestPassage.c * CELL_SIZE;
+                    playerGroup.position.z = offsetZ + nearestPassage.r * CELL_SIZE;
+                    
+                    playerGridPos = { r: nearestPassage.r, c: nearestPassage.c };
+                    revealFogOfWar(nearestPassage.r, nearestPassage.c);
+                    drawMinimap();
+                }
+            }
+        }
+
+        function checkWallCollision(newX, newZ, radius) {
+            if (isGhostActive) return false;
+            if (playerGroup.position.y > WALL_HEIGHT - 0.2) return false;
+
+            for (let i = 0; i < walls.length; i++) {
+                const w = walls[i];
+                const closestX = Math.max(w.x - w.halfSize, Math.min(newX, w.x + w.halfSize));
+                const closestZ = Math.max(w.z - w.halfSize, Math.min(newZ, w.z + w.halfSize));
+                if (((newX - closestX) ** 2 + (newZ - closestZ) ** 2) < (radius ** 2)) return true;
+            }
+            return false;
+        }
+
+        window.startLevelGame = function() {
+            document.getElementById('start-modal').style.display = 'none';
+            gameActive = true;
+        };
+
+        const SPEED = 8, PLAYER_RADIUS = 0.5;
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+
+            if (gameActive && !isTransitioning && playerGroup) {
+                const camRotSpeed = 1.8 * dt;
+                if (keys['j']) cameraAngleX += camRotSpeed;
+                if (keys['l']) cameraAngleX -= camRotSpeed;
+                if (keys['i']) cameraAngleY = Math.min(Math.PI / 2.1, cameraAngleY + camRotSpeed);
+                if (keys['k']) cameraAngleY = Math.max(0.1, cameraAngleY - camRotSpeed);
+
+                let isMoving = false;
+
+                if (!isTeleportTargeting) {
+                    let inputX = 0, inputZ = 0;
+
+                    if (keys['a'] || keys['arrowleft']) inputX -= 1;
+                    if (keys['d'] || keys['arrowright']) inputX += 1;
+                    if (keys['w'] || keys['arrowup']) inputZ -= 1;
+                    if (keys['s'] || keys['arrowdown']) inputZ += 1;
+
+                    if (inputX !== 0 || inputZ !== 0) {
+                        isMoving = true;
+                        const len = Math.sqrt(inputX * inputX + inputZ * inputZ);
+                        inputX /= len; inputZ /= len;
+
+                        const moveX = inputX * Math.cos(cameraAngleX) + inputZ * Math.sin(cameraAngleX);
+                        const moveZ = -inputX * Math.sin(cameraAngleX) + inputZ * Math.cos(cameraAngleX);
+
+                        const pos = playerGroup.position;
+                        const nextX = pos.x + moveX * SPEED * dt;
+                        const nextZ = pos.z + moveZ * SPEED * dt;
+
+                        let finalX = pos.x, finalZ = pos.z;
+                        if (!checkWallCollision(nextX, pos.z, PLAYER_RADIUS)) finalX = nextX;
+                        if (!checkWallCollision(pos.x, nextZ, PLAYER_RADIUS)) finalZ = nextZ;
+
+                        playerGroup.position.x = finalX;
+                        playerGroup.position.z = finalZ;
+
+                        playerGroup.rotation.y = Math.atan2(moveX, moveZ);
+
+                        const offsetX = -(mazeCols * CELL_SIZE) / 2 + CELL_SIZE / 2;
+                        const offsetZ = -(mazeRows * CELL_SIZE) / 2 + CELL_SIZE / 2;
+                        const cGridC = Math.round((finalX - offsetX) / CELL_SIZE);
+                        const cGridR = Math.round((finalZ - offsetZ) / CELL_SIZE);
+
+                        if (cGridR !== playerGridPos.r || cGridC !== playerGridPos.c) {
+                            playerGridPos = { r: cGridR, c: cGridC };
+                            revealFogOfWar(cGridR, cGridC);
+                            drawMinimap();
+                        }
+                    }
+                }
+
+                if (isMoving && jumpCount === 0) {
+                    runAnimTime += dt * 15;
+                    const legAngle = Math.sin(runAnimTime) * 0.6;
+                    const armAngle = Math.sin(runAnimTime) * 0.7;
+
+                    leftLeg.rotation.x = legAngle;
+                    rightLeg.rotation.x = -legAngle;
+                    leftArm.rotation.x = -armAngle;
+                    rightArm.rotation.x = armAngle;
+                } else {
+                    leftLeg.rotation.x = 0; rightLeg.rotation.x = 0;
+                    leftArm.rotation.x = 0; rightArm.rotation.x = 0;
+                }
+
+                playerGroup.position.y += playerVelocityY * dt;
+                playerVelocityY += GRAVITY * dt;
+
+                if (playerGroup.position.y <= 0) {
+                    playerGroup.position.y = 0;
+                    jumpCount = 0;
+                    playerVelocityY = 0;
+                    ejectIfInsideWall();
+                }
+
+                for (let i = itemEntities.length - 1; i >= 0; i--) {
+                    const item = itemEntities[i];
+                    item.mesh.rotation.y += 3 * dt;
+
+                    if (playerGroup.position.distanceTo(item.mesh.position) < 1.0) {
+                        powerups[item.type]++;
+                        scene.remove(item.mesh);
+                        itemEntities.splice(i, 1);
+                        updateUI();
+                    }
+                }
+
+                const targetX = playerGroup.position.x;
+                const targetY = playerGroup.position.y + 0.8;
+                const targetZ = playerGroup.position.z;
+
+                const camX = targetX + cameraDistance * Math.sin(cameraAngleX) * Math.cos(cameraAngleY);
+                const camY = targetY + cameraDistance * Math.sin(cameraAngleY);
+                const camZ = targetZ + cameraDistance * Math.cos(cameraAngleX) * Math.cos(cameraAngleY);
+
+                camera.position.set(camX, camY, camZ);
+                camera.lookAt(targetX, targetY, targetZ);
+
+                if (finishGroup) {
+                    const distToFinish = playerGroup.position.distanceTo(finishGroup.position);
+
+                    if (distToFinish <= 1.5) {
+                        isTransitioning = true;
+                        totalCleared++;
+                        localStorage.setItem('maze_cleared', totalCleared.toString());
+
+                        if (currentLevel >= highScore) {
+                            highScore = currentLevel + 1;
+                            localStorage.setItem('maze_highscore', highScore.toString());
+                        }
+
+                        const toast = document.getElementById('toast');
+                        toast.innerText = `🏁 LEVEL ${currentLevel} TERPECAHKAN!`;
+                        toast.style.display = 'block';
+
+                        setTimeout(() => {
+                            toast.style.display = 'none';
+                            currentLevel++;
+                            cancelTeleportMode();
+                            loadLevelScene(currentLevel);
+                            
+                            const nextTheme = THEMES[(currentLevel - 1) % THEMES.length].name;
+                            document.getElementById('modal-title').innerText = `LEVEL ${currentLevel}`;
+                            document.getElementById('modal-desc').innerText = `Tema Lingkungan Baru: ${nextTheme}!\nUkuran Grid: ${mazeCols} x ${mazeRows}.`;
+                            document.getElementById('start-modal').style.display = 'flex';
+                            gameActive = false;
+                        }, 1600);
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.onload = initEngine;
+    </script>
+</body>
+</html>
